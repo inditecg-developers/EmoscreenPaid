@@ -3,37 +3,34 @@ set -e
 
 echo "🚀 Starting EmoScreen deployment"
 
-# Always run from project root
+# Always work from project root
 cd /var/www/EmoScreen
 
-echo "📥 Pulling latest code from GitHub"
+echo "📥 Pulling latest code"
 git pull origin main
 
 echo "🐍 Activating virtual environment"
 source /var/www/venv/bin/activate
 
-echo "📦 Installing Python dependencies"
+echo "📦 Installing dependencies"
 pip install --upgrade pip
 pip install -r requirements.txt
 
-echo "🗄 Running Django migrations"
+echo "🗄 Running migrations"
 python manage.py migrate --noinput
 
 echo "🎨 Collecting static files"
 python manage.py collectstatic --noinput
 
 # =====================================================
-# 🔽 INGESTION COMMANDS CAN BE ADDED BELOW THIS LINE 🔽
+# 🔽 INGESTION COMMANDS CAN BE ADDED BELOW 🔽
 # =====================================================
-
-# Example (commented on purpose):
+# Example:
 # python manage.py ingest_data
-# python manage.py load_reports
 # python scripts/custom_ingest.py
-
 # =====================================================
 
-echo "🔄 Restarting Gunicorn service"
+echo "🔄 Restarting Gunicorn"
 sudo systemctl restart gunicorn-EmoScreen_new
 
-echo "✅ Deployment completed successfully"
+echo "✅ Deployment finished successfully"
