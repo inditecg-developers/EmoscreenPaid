@@ -492,8 +492,12 @@ def screening_form(request, code, lang):
         for rf in flags:
             SubmissionRedFlag.objects.create(submission=submission, red_flag_id=rf)
 
-        no_flags_msg = ResultMessage.objects.get(message_code="NO_FLAGS", lang_id=lang).message_text
-        has_flags_intro = ResultMessage.objects.get(message_code="HAS_FLAGS_INTRO", lang_id=lang).message_text
+        # Result screen copy (DB-driven)
+        no_flags_msg = result_message_text("NO_FLAGS", lang, "No red flags were identified at this time.")
+        has_flags_intro = result_message_text("HAS_FLAGS_INTRO", lang, "")
+        self_capture_notice_top = result_message_text("SELF_CAPTURE_NOTICE_TOP", lang, "")
+        self_visit_doctor_notice_bottom = result_message_text("SELF_VISIT_DOCTOR_NOTICE_BOTTOM", lang, "")
+        doctor_email_notice = result_message_text("DOCTOR_EMAIL_NOTICE", lang, "")
 
         # NEW (aligned)
         rf_labels, education_links = _aligned_rf_labels_and_links(flags, lang, request)
@@ -547,11 +551,20 @@ def screening_form(request, code, lang):
         wa_msg = booking_message_for_clinic(patient_name)
         wa_link = whatsapp_link(wa_digits, wa_msg) if (flags_count > 0 and wa_digits) else ""
 
-        doctor_name = " ".join(filter(None, [pro.salutation, pro.first_name, pro.last_name])).strip()
-        result_intro = ui.get("result_has_flags_intro") or has_flags_intro
-        result_capture = ui["result_capture_screen"].format(doctor=doctor_name)
-        result_emailed = ui["result_emailed_to_doctor"].format(doctor=doctor_name)
-        result_visit = ui["result_visit_immediately"].format(doctor=doctor_name)
+        doctor_name = " ".join(filter(None, [pro.first_name, pro.last_name])).strip()
+        # Avoid double-prefix like "Dr. Dr X" if the name already contains a title.
+        import re
+        doctor_name = re.sub(r"^(dr\.?|doctor)\s*", "", doctor_name, flags=re.I).strip()
+        # Avoid double-prefix like "Dr. Dr X" if the name already contains a title.
+        import re
+        doctor_name = re.sub(r"^(dr\.?|doctor)\s*", "", doctor_name, flags=re.I).strip()
+        doctor_email_notice = _interp_doctor_name(doctor_email_notice, doctor_name)
+
+        # UI strings (DB-driven)
+        result_title = ui_text("RESULT_TITLE", lang, "Your Report")
+        call_to_book_label = ui_text("CALL_TO_BOOK", lang, "CALL TO BOOK DOCTOR APPOINTMENT")
+        send_message_to_book_label = ui_text("SEND_MESSAGE_TO_BOOK", lang, "SEND MESSAGE TO BOOK DOCTOR APPOINTMENT")
+
         is_self_screen = False
         try:
             is_self_screen = (pro and pro.unique_doctor_code == getattr(settings, "PUBLIC_DOCTOR_CODE", "PUBLIC0001"))
@@ -562,14 +575,17 @@ def screening_form(request, code, lang):
             "flags_count": flags_count,
             "no_flags_msg": no_flags_msg,
             "has_flags_intro": has_flags_intro,
+            "self_capture_notice_top": self_capture_notice_top,
+            "self_visit_doctor_notice_bottom": self_visit_doctor_notice_bottom,
+            "doctor_email_notice": doctor_email_notice,
+            "doctor_name": doctor_name,
+            "result_title": result_title,
+            "call_to_book_label": call_to_book_label,
+            "send_message_to_book_label": send_message_to_book_label,
             "rf_labels": rf_labels,
             "call_link": call_link,
             "wa_link": wa_link,
             "pro": pro,
-            "result_intro": result_intro,
-            "result_capture": result_capture,
-            "result_emailed": result_emailed,
-            "result_visit": result_visit,
             "is_self_screen": is_self_screen,
             **white_label_context(pro),
         }
@@ -1086,6 +1102,30 @@ def ui_text(key: str, lang: str, default: str = "") -> str:
             return UiString.objects.get(key=key, lang_id="en").text
         except UiString.DoesNotExist:
             return default
+
+def result_message_text(message_code: str, lang: str, default: str = "") -> str:
+    """
+    Fetch result copy from result_messages by (message_code, lang).
+    Falls back to English, then the provided default.
+    """
+    try:
+        return ResultMessage.objects.get(message_code=message_code, lang_id=lang).message_text
+    except ResultMessage.DoesNotExist:
+        try:
+            return ResultMessage.objects.get(message_code=message_code, lang_id="en").message_text
+        except ResultMessage.DoesNotExist:
+            return default
+
+def _interp_doctor_name(text: str, doctor_name: str) -> str:
+    """
+    Replace simple placeholders used in sheet copy:
+      - {{doctor_name}} / {{ doctor_name }}
+    (Keeps existing behaviour if the placeholder is not present.)
+    """
+    if not text:
+        return text
+    import re
+    return re.sub(r"\{\{\s*doctor_name\s*\}\}", doctor_name or "", str(text))
 
 
 # -- Helper: build aligned (labels, links) for a set of red-flag IDs --
