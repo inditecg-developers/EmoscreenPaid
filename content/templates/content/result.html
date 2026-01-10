@@ -1,6 +1,6 @@
 {% extends "content/base.html" %}
 {% block content %}
-<h2>Your Report</h2>
+<h2>{{ result_title|default:"Your Report" }}</h2>
 <div class="card">
   {% if flags_count == 0 %}
     <p>{{ no_flags_msg }}</p>
@@ -9,15 +9,15 @@
 
       {# --- TOP NOTICE (only for Self Screen) --- #}
       {% if is_self_screen and flags_count > 0 %}
-        <p><strong>Please capture this screen and show it to your doctor.</strong></p>
+        {% if self_capture_notice_top %}<p><strong>{{ self_capture_notice_top }}</strong></p>{% endif %}
       {% endif %}
 
       {# --- MAIN MESSAGE --- #}
-      <p><strong>Based on your answers, the following warning signs are noticed in the child.</strong></p>
+      {% if has_flags_intro %}<p><strong>{{ has_flags_intro }}</strong></p>{% endif %}
 
       {# The "emailed to doctor" line must NOT appear for Self Screen #}
       {% if not is_self_screen %}
-        <p>Your report has also been emailed to Dr. {{ pro_name }}.</p>
+        {% if doctor_email_notice %}<p>{{ doctor_email_notice }}</p>{% endif %}
       {% endif %}
 
       <ul>
@@ -28,7 +28,7 @@
 
       {# --- BOTTOM NOTICE (only for Self Screen) --- #}
       {% if is_self_screen %}
-        <p style="margin-top:12px"><strong>Please visit your doctor immediately if you have not already visited recently for this condition.</strong></p>
+        {% if self_visit_doctor_notice_bottom %}<p style="margin-top:12px"><strong>{{ self_visit_doctor_notice_bottom }}</strong></p>{% endif %}
       {% endif %}
 
     </div>
@@ -36,10 +36,10 @@
     <!-- Patient CTAs unchanged -->
     <div style="margin-top:16px">
       {% if call_link %}
-        <p><a class="btn btn-red" href="{{ call_link }}">CALL TO BOOK DOCTOR APPOINTMENT</a></p>
+        <p><a class="btn btn-red" href="{{ call_link }}">{{ call_to_book_label|default:"CALL TO BOOK DOCTOR APPOINTMENT" }}</a></p>
       {% endif %}
       {% if wa_link %}
-        <p><a class="btn" href="{{ wa_link }}" target="_blank" rel="noopener">SEND MESSAGE TO BOOK DOCTOR APPOINTMENT</a></p>
+        <p><a class="btn" href="{{ wa_link }}" target="_blank" rel="noopener">{{ send_message_to_book_label|default:"SEND MESSAGE TO BOOK DOCTOR APPOINTMENT" }}</a></p>
       {% endif %}
     </div>
   {% endif %}
