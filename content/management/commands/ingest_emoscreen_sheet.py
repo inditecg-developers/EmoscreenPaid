@@ -75,6 +75,22 @@ def _normalize_doctor_education_columns(frames: Dict[str, pd.DataFrame]):
         df["reference_2"] = ""
     frames["doctor_education"] = df
 
+def _normalize_result_messages_columns(frames: Dict[str, pd.DataFrame]):
+    """
+    Some workbooks use pluralized column names:
+      - messages_code  -> message_code
+      - messages_text  -> message_text
+    Normalize them so REQUIRED_SHEETS + ingest logic work unchanged.
+    """
+    if "result_messages" not in frames:
+        return
+    df = frames["result_messages"].copy()
+    if "messages_code" in df.columns and "message_code" not in df.columns:
+        df = df.rename(columns={"messages_code": "message_code"})
+    if "messages_text" in df.columns and "message_text" not in df.columns:
+        df = df.rename(columns={"messages_text": "message_text"})
+    frames["result_messages"] = df
+
 def _strip_val(v):
     if v is None:
         return None
@@ -241,6 +257,7 @@ class Command(BaseCommand):
 
         # Map doctor_education alt columns, then normalize codes
         _normalize_doctor_education_columns(frames)
+        _normalize_result_messages_columns(frames)
         _normalize_codes(frames)
 
         # Validate required cols exist
