@@ -1,6 +1,6 @@
 {% extends "content/base.html" %}
 {% block content %}
-<h2>{{ result_title|default:"Your Report" }}</h2>
+<h2>{{ result_title|default:"Your Reporting" }}</h2>
 <div class="card">
   {% if flags_count == 0 %}
     <p>{{ no_flags_msg }}</p>
@@ -43,6 +43,7 @@
       {% endif %}
     </div>
   {% endif %}
-  <p class="muted">Report Code: {{ report_code }} (keep this for future reference)</p>
+  <p class="muted">Report Coding: {{ report_code }} (keep this for future reference)</p>
 </div>
 {% endblock %}
+
