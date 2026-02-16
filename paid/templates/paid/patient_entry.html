@@ -1,0 +1,4 @@
+<h1>EmoScreen Order</h1>
+<p>{{ order.form.title }} - ₹{{ order.final_amount_paise|floatformat:-2 }}</p>
+<form method="post">{% csrf_token %}{{ email_form.as_p }}<button type="submit">Continue</button></form>
+<a href="{% url 'paid:patient_payment' order.order_code %}">Proceed to Payment</a>
