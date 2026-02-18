@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import math
 
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
@@ -105,21 +106,36 @@ class Command(BaseCommand):
         return normalized
 
     def _coerce_json_value(self, value):
-        if value is None:
+        if value is None or pd.isna(value):
             return None
-        if isinstance(value, (dict, list, int, float, bool)):
+
+        # Keep valid Python JSON structures.
+        if isinstance(value, (dict, list, bool, int)):
             return value
+
+        if isinstance(value, float):
+            if math.isnan(value) or math.isinf(value):
+                return None
+            return value
+
         if isinstance(value, str):
             raw = value.strip()
-            if not raw or raw.lower() in {"none", "null", "nan", "na", "n/a", "-"}:
+            if not raw or raw.lower() in {
+                "none", "null", "nan", "na", "n/a", "-", "#n/a", "#value!", "#div/0!"
+            }:
                 return None
             if raw.lower() == "true":
                 return True
             if raw.lower() == "false":
                 return False
             try:
-                return json.loads(raw)
+                parsed = json.loads(raw)
+                # Prevent non-standard numeric values from leaking into MySQL JSON columns.
+                if isinstance(parsed, float) and (math.isnan(parsed) or math.isinf(parsed)):
+                    return None
+                return parsed
             except json.JSONDecodeError:
                 # Invalid JSON strings must not be written to MySQL JSON columns.
                 return None
+
         return None
