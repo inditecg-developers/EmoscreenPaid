@@ -97,12 +97,29 @@ class Command(BaseCommand):
             if not target_key:
                 continue
 
-            if target_key in json_fields and isinstance(value, str) and value.strip():
-                try:
-                    value = json.loads(value)
-                except json.JSONDecodeError:
-                    pass
+            if target_key in json_fields:
+                value = self._coerce_json_value(value)
 
             normalized[target_key] = value
 
         return normalized
+
+    def _coerce_json_value(self, value):
+        if value is None:
+            return None
+        if isinstance(value, (dict, list, int, float, bool)):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw or raw.lower() in {"none", "null", "nan", "na", "n/a", "-"}:
+                return None
+            if raw.lower() == "true":
+                return True
+            if raw.lower() == "false":
+                return False
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                # Invalid JSON strings must not be written to MySQL JSON columns.
+                return None
+        return None
