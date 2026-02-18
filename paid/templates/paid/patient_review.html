@@ -1,0 +1,4 @@
+<h1>Review</h1>
+<p>Please verify your responses and submit final.</p>
+<form method="post" action="{% url 'paid:patient_submit_final' order.order_code %}">{% csrf_token %}<button type="submit">Submit Final</button></form>
+<a href="{% url 'paid:patient_form' order.order_code %}">Edit Answers</a>
