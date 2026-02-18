@@ -195,8 +195,17 @@ class Command(BaseCommand):
 
         if isinstance(value, str):
             raw = value.strip()
-            if raw.lower() in {"nan", "na", "n/a", "none", "null", "-", "#n/a", "#value!", "#div/0!"}:
+            lowered = raw.lower()
+            if lowered in {"nan", "na", "n/a", "none", "null", "-", "#n/a", "#value!", "#div/0!"}:
                 return None
+
+            if field is not None and field.get_internal_type() == "BooleanField":
+                if lowered in {"true", "1", "yes", "y", "t"}:
+                    return True
+                if lowered in {"false", "0", "no", "n", "f"}:
+                    return False
+                # Some sheets use semantic markers (e.g., "MISMATCH") in bool columns.
+                return bool(raw)
 
             if field is not None and field.get_internal_type() == "DecimalField":
                 try:
@@ -204,6 +213,12 @@ class Command(BaseCommand):
                 except (InvalidOperation, ValueError):
                     return None
             return value
+
+        if field is not None and field.get_internal_type() == "BooleanField":
+            if isinstance(value, (int, float)):
+                if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                    return None
+                return bool(int(value))
 
         if field is not None and field.get_internal_type() == "DecimalField":
             if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
