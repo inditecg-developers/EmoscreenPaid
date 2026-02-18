@@ -5,6 +5,7 @@ import math
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.utils import OperationalError
 
 from paid import models
 
@@ -57,17 +58,35 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Paid EmoScreen config ingestion complete."))
 
     def _upsert_records(self, model_cls, key_field, records):
-        for row in records:
+        for index, row in enumerate(records, start=2):
             normalized = self._normalize_row(model_cls, row)
             key = normalized.get(key_field)
             if not key:
                 continue
-            model_cls.objects.update_or_create(**{key_field: key}, defaults=normalized)
+            try:
+                model_cls.objects.update_or_create(**{key_field: key}, defaults=normalized)
+            except OperationalError as exc:
+                if "Invalid JSON text" not in str(exc):
+                    raise
+                repaired = self._drop_invalid_json_fields(model_cls, normalized)
+                self.stderr.write(
+                    f"Retrying {model_cls.__name__} row {index} with JSON fields nulled after DB JSON error."
+                )
+                model_cls.objects.update_or_create(**{key_field: key}, defaults=repaired)
 
     def _bulk_insert(self, model_cls, records):
-        objs = [model_cls(**self._normalize_row(model_cls, row)) for row in records]
-        if objs:
-            model_cls.objects.bulk_create(objs)
+        for index, row in enumerate(records, start=2):
+            normalized = self._normalize_row(model_cls, row)
+            try:
+                model_cls.objects.create(**normalized)
+            except OperationalError as exc:
+                if "Invalid JSON text" not in str(exc):
+                    raise
+                repaired = self._drop_invalid_json_fields(model_cls, normalized)
+                self.stderr.write(
+                    f"Retrying {model_cls.__name__} row {index} with JSON fields nulled after DB JSON error."
+                )
+                model_cls.objects.create(**repaired)
 
     def _normalize_row(self, model_cls, row):
         """
@@ -104,6 +123,18 @@ class Command(BaseCommand):
             normalized[target_key] = value
 
         return normalized
+
+    def _drop_invalid_json_fields(self, model_cls, normalized):
+        json_field_names = {
+            f.attname
+            for f in model_cls._meta.fields
+            if f.get_internal_type() == "JSONField"
+        }
+        repaired = dict(normalized)
+        for field_name in json_field_names:
+            if field_name in repaired:
+                repaired[field_name] = None
+        return repaired
 
     def _coerce_json_value(self, value):
         if value is None or pd.isna(value):
