@@ -1,0 +1,7 @@
+<h1>Payment</h1>
+<p>Amount: {{ order.final_amount_paise }} paise</p>
+<form method="post">{% csrf_token %}
+<input name="gateway_payment_id" placeholder="mock payment id" required>
+<input name="gateway_signature" placeholder="mock signature">
+<button type="submit">Mark Paid</button>
+</form>

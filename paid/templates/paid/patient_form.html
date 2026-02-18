@@ -1,0 +1,11 @@
+<h1>Assessment Form</h1>
+<form method="post">{% csrf_token %}
+{{ demo_form.as_p }}
+{% for q in questions %}
+<div>
+<label>{{ q.question_text }}</label>
+<input type="text" name="q_{{ q.question_code }}">
+</div>
+{% endfor %}
+<button type="submit">Review</button>
+</form>
