@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
@@ -56,12 +57,52 @@ class Command(BaseCommand):
 
     def _upsert_records(self, model_cls, key_field, records):
         for row in records:
-            key = row.get(key_field)
+            normalized = self._normalize_row(model_cls, row)
+            key = normalized.get(key_field)
             if not key:
                 continue
-            model_cls.objects.update_or_create(**{key_field: key}, defaults=row)
+            model_cls.objects.update_or_create(**{key_field: key}, defaults=normalized)
 
     def _bulk_insert(self, model_cls, records):
-        objs = [model_cls(**row) for row in records]
+        objs = [model_cls(**self._normalize_row(model_cls, row)) for row in records]
         if objs:
             model_cls.objects.bulk_create(objs)
+
+    def _normalize_row(self, model_cls, row):
+        """
+        Map workbook column names to Django model field names.
+        Notably, FK workbook columns use DB column names like `form_code`,
+        while Django model kwargs must use `form_id` (the FK attname).
+        """
+        normalized = {}
+        direct_fields = {f.name for f in model_cls._meta.get_fields() if hasattr(f, "attname")}
+        db_column_to_attname = {
+            f.db_column: f.attname
+            for f in model_cls._meta.fields
+            if getattr(f, "db_column", None)
+        }
+        json_fields = {
+            f.attname
+            for f in model_cls._meta.fields
+            if f.get_internal_type() == "JSONField"
+        }
+
+        for key, value in row.items():
+            target_key = None
+            if key in direct_fields:
+                target_key = key
+            elif key in db_column_to_attname:
+                target_key = db_column_to_attname[key]
+
+            if not target_key:
+                continue
+
+            if target_key in json_fields and isinstance(value, str) and value.strip():
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    pass
+
+            normalized[target_key] = value
+
+        return normalized
