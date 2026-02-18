@@ -158,12 +158,24 @@ class Command(BaseCommand):
         if value is not None:
             return value
 
-        # Avoid sending NULL to non-null textual columns (e.g. notes).
-        if not field.null and field.get_internal_type() in {"CharField", "TextField", "EmailField"}:
+        # Prefer explicit model defaults for non-null fields.
+        if not field.null and field.has_default():
+            default = field.get_default()
+            return default() if callable(default) else default
+
+        internal_type = field.get_internal_type()
+
+        # Avoid sending NULL to non-null textual columns.
+        if not field.null and internal_type in {"CharField", "TextField", "EmailField"}:
             return ""
 
-        # Optional booleans often come as empty cells in sheets; default safely.
-        if not field.null and field.get_internal_type() == "BooleanField":
+        if not field.null and internal_type in {"IntegerField", "PositiveIntegerField", "BigIntegerField", "SmallIntegerField", "PositiveSmallIntegerField"}:
+            return 0
+
+        if not field.null and internal_type == "DecimalField":
+            return Decimal("0")
+
+        if not field.null and internal_type == "BooleanField":
             return False
 
         return value
@@ -173,8 +185,6 @@ class Command(BaseCommand):
         for field in model_cls._meta.fields:
             name = field.attname
             if field.primary_key:
-                continue
-            if repaired.get(name, None) is not None:
                 continue
             repaired[name] = self._coerce_nullability(field, repaired.get(name))
         return repaired
