@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.db.utils import OperationalError
+from django.db.utils import OperationalError, IntegrityError
 from django.core.exceptions import ValidationError
 
 from paid import models
@@ -77,6 +77,14 @@ class Command(BaseCommand):
                     f"Retrying {model_cls.__name__} row {index} with JSON fields nulled after DB JSON error."
                 )
                 model_cls.objects.update_or_create(**{key_field: key}, defaults=repaired)
+            except IntegrityError as exc:
+                if "cannot be null" not in str(exc).lower():
+                    raise
+                repaired = self._fill_required_non_nullable_fields(model_cls, normalized)
+                self.stderr.write(
+                    f"Retrying {model_cls.__name__} row {index} with required non-null fields backfilled."
+                )
+                model_cls.objects.update_or_create(**{key_field: key}, defaults=repaired)
 
     def _bulk_insert(self, model_cls, records):
         for index, row in enumerate(records, start=2):
@@ -91,6 +99,14 @@ class Command(BaseCommand):
                 repaired = self._drop_invalid_json_fields(model_cls, normalized)
                 self.stderr.write(
                     f"Retrying {model_cls.__name__} row {index} with JSON fields nulled after DB JSON error."
+                )
+                model_cls.objects.create(**repaired)
+            except IntegrityError as exc:
+                if "cannot be null" not in str(exc).lower():
+                    raise
+                repaired = self._fill_required_non_nullable_fields(model_cls, normalized)
+                self.stderr.write(
+                    f"Retrying {model_cls.__name__} row {index} with required non-null fields backfilled."
                 )
                 model_cls.objects.create(**repaired)
 
@@ -124,14 +140,44 @@ class Command(BaseCommand):
             if not target_key:
                 continue
 
+            field = field_by_attname.get(target_key)
             if target_key in json_fields:
                 value = self._coerce_json_value(value)
             else:
-                value = self._coerce_non_json_value(field_by_attname.get(target_key), value)
+                value = self._coerce_non_json_value(field, value)
 
+            value = self._coerce_nullability(field, value)
             normalized[target_key] = value
 
         return normalized
+
+    def _coerce_nullability(self, field, value):
+        if field is None:
+            return value
+
+        if value is not None:
+            return value
+
+        # Avoid sending NULL to non-null textual columns (e.g. notes).
+        if not field.null and field.get_internal_type() in {"CharField", "TextField", "EmailField"}:
+            return ""
+
+        # Optional booleans often come as empty cells in sheets; default safely.
+        if not field.null and field.get_internal_type() == "BooleanField":
+            return False
+
+        return value
+
+    def _fill_required_non_nullable_fields(self, model_cls, normalized):
+        repaired = dict(normalized)
+        for field in model_cls._meta.fields:
+            name = field.attname
+            if field.primary_key:
+                continue
+            if repaired.get(name, None) is not None:
+                continue
+            repaired[name] = self._coerce_nullability(field, repaired.get(name))
+        return repaired
 
     def _coerce_non_json_value(self, field, value):
         if value is None or pd.isna(value):
