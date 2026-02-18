@@ -1,11 +1,13 @@
 from pathlib import Path
 import json
 import math
+from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.utils import OperationalError
+from django.core.exceptions import ValidationError
 
 from paid import models
 
@@ -65,6 +67,8 @@ class Command(BaseCommand):
                 continue
             try:
                 model_cls.objects.update_or_create(**{key_field: key}, defaults=normalized)
+            except ValidationError as exc:
+                raise CommandError(f"Validation failed in {model_cls.__name__} row {index}: {exc}") from exc
             except OperationalError as exc:
                 if "Invalid JSON text" not in str(exc):
                     raise
@@ -79,6 +83,8 @@ class Command(BaseCommand):
             normalized = self._normalize_row(model_cls, row)
             try:
                 model_cls.objects.create(**normalized)
+            except ValidationError as exc:
+                raise CommandError(f"Validation failed in {model_cls.__name__} row {index}: {exc}") from exc
             except OperationalError as exc:
                 if "Invalid JSON text" not in str(exc):
                     raise
@@ -96,6 +102,7 @@ class Command(BaseCommand):
         """
         normalized = {}
         direct_fields = {f.name for f in model_cls._meta.get_fields() if hasattr(f, "attname")}
+        field_by_attname = {f.attname: f for f in model_cls._meta.fields}
         db_column_to_attname = {
             f.db_column: f.attname
             for f in model_cls._meta.fields
@@ -119,10 +126,38 @@ class Command(BaseCommand):
 
             if target_key in json_fields:
                 value = self._coerce_json_value(value)
+            else:
+                value = self._coerce_non_json_value(field_by_attname.get(target_key), value)
 
             normalized[target_key] = value
 
         return normalized
+
+    def _coerce_non_json_value(self, field, value):
+        if value is None or pd.isna(value):
+            return None
+
+        if isinstance(value, str):
+            raw = value.strip()
+            if raw.lower() in {"nan", "na", "n/a", "none", "null", "-", "#n/a", "#value!", "#div/0!"}:
+                return None
+
+            if field is not None and field.get_internal_type() == "DecimalField":
+                try:
+                    return Decimal(raw)
+                except (InvalidOperation, ValueError):
+                    return None
+            return value
+
+        if field is not None and field.get_internal_type() == "DecimalField":
+            if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                return None
+            try:
+                return Decimal(str(value))
+            except (InvalidOperation, ValueError):
+                return None
+
+        return value
 
     def _drop_invalid_json_fields(self, model_cls, normalized):
         json_field_names = {
