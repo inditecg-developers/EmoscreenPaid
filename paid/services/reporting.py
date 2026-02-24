@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -120,6 +121,22 @@ def _disclaimer_html(form, report_type):
     )
 
 
+def _normalize_paragraph_html(text: str) -> str:
+    """Normalize template HTML to ReportLab Paragraph-friendly markup."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+
+    # ReportLab expects self-closing line breaks and supports a limited markup subset.
+    cleaned = re.sub(r"<\s*br\s*>", "<br/>", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<\s*br\s*/\s*>", "<br/>", cleaned, flags=re.IGNORECASE)
+
+    # Strip outer <p> wrapper often present in template HTML.
+    cleaned = re.sub(r"^\s*<\s*p\s*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<\s*/\s*p\s*>\s*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
 def _build_pdf(report_type: str, submission) -> bytes:
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, spaceAfter=14)
@@ -199,7 +216,7 @@ def _build_pdf(report_type: str, submission) -> bytes:
         story.append(Paragraph(summary, body))
 
     story.append(Spacer(1, 10))
-    story.append(Paragraph(_disclaimer_html(submission.form, report_type), body))
+    story.append(Paragraph(_normalize_paragraph_html(_disclaimer_html(submission.form, report_type)), body))
 
     doc.build(story)
     return buf.getvalue()
