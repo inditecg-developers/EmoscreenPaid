@@ -9,7 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from paid.models import (
     EsCfgDerivedList,
@@ -112,7 +112,7 @@ def _header_band(submission):
 
 
 def _disclaimer_html(form, report_type):
-    t = EsCfgReportTemplate.objects.filter(form=form, report_type=report_type).first()
+    t = _report_template(form, report_type)
     if t and t.disclaimer_html:
         return t.disclaimer_html
     return (
@@ -137,7 +137,50 @@ def _normalize_paragraph_html(text: str) -> str:
     return cleaned
 
 
+def _report_template(form, report_type):
+    return EsCfgReportTemplate.objects.filter(form=form, report_type=report_type).first()
+
+
+def _resolve_logo_path(logo_value: str) -> str | None:
+    if not logo_value:
+        return None
+
+    raw = Path(str(logo_value).strip())
+    candidates = []
+    if raw.is_absolute():
+        candidates.append(raw)
+    else:
+        base = Path(getattr(settings, "BASE_DIR", Path.cwd()))
+        media_root = Path(getattr(settings, "MEDIA_ROOT", ""))
+        candidates.extend(
+            [
+                base / raw,
+                base / "paid" / "assets" / "reporting" / "logos" / raw.name,
+                base / "static" / "paid" / "reporting" / "logos" / raw.name,
+                media_root / raw,
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate and candidate.exists() and candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _footer_rows(template: EsCfgReportTemplate | None):
+    company = (template.footer_company if template else "") or "EQUIPOISE Learning Private Limited"
+    tagline = (template.footer_tagline if template else "") or (
+        "The ISO 9001-2015 Certified\nEmotional Intelligence Research & Training Organisation"
+    )
+    phone = (template.footer_phone if template else "") or "+91 9004806077"
+    email = (template.footer_email if template else "") or "equip2006@gmail.com"
+    left = f"<b>{company}</b><br/>{tagline.replace(chr(10), '<br/>')}"
+    right = f"<b>Contact us</b><br/>{phone}<br/>{email}"
+    return [[left, right]]
+
+
 def _build_pdf(report_type: str, submission) -> bytes:
+    template = _report_template(submission.form, report_type)
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, spaceAfter=14)
     h_style = ParagraphStyle("h", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#0b2a4d"), spaceBefore=8, spaceAfter=6)
@@ -149,6 +192,14 @@ def _build_pdf(report_type: str, submission) -> bytes:
 
     title = "Doctor Report for EmoScreen" if report_type == "doctor" else "Patient Report for EmoScreen"
     story.append(Paragraph(title, title_style))
+
+    logo_path = _resolve_logo_path(template.header_logo_path if template else "")
+    if logo_path:
+        logo = Image(logo_path)
+        logo.drawHeight = 18 * mm
+        logo.drawWidth = 95 * mm
+        story.append(logo)
+        story.append(Spacer(1, 4))
 
     head = Table(_header_band(submission), colWidths=[30 * mm, 60 * mm, 30 * mm, 60 * mm])
     head.setStyle(TableStyle([
@@ -163,8 +214,8 @@ def _build_pdf(report_type: str, submission) -> bytes:
     story.append(Spacer(1, 8))
 
     story.append(Paragraph("Responses", h_style))
-    response_rows = [["Sr.", "Question", "Response"]] + [[str(sr), q, a] for sr, q, a in _question_rows(submission)]
-    rt = Table(response_rows, colWidths=[12 * mm, 110 * mm, 50 * mm], repeatRows=1)
+    response_rows = [["Question", "Response"]] + [[q, a] for _, q, a in _question_rows(submission)]
+    rt = Table(response_rows, colWidths=[122 * mm, 50 * mm], repeatRows=1)
     rt.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2f855a")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -217,6 +268,17 @@ def _build_pdf(report_type: str, submission) -> bytes:
 
     story.append(Spacer(1, 10))
     story.append(Paragraph(_normalize_paragraph_html(_disclaimer_html(submission.form, report_type)), body))
+    story.append(Spacer(1, 12))
+
+    footer_table = Table(_footer_rows(template), colWidths=[110 * mm, 62 * mm])
+    footer_table.setStyle(TableStyle([
+        ("LINEABOVE", (0, 0), (-1, 0), 0.4, colors.HexColor("#d1d5db")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(footer_table)
 
     doc.build(story)
     return buf.getvalue()
