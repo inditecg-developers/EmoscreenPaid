@@ -1,4 +1,14 @@
-<h1>EmoScreen Order</h1>
-<p>{{ order.form.title }} - ₹{{ order.final_amount_paise|floatformat:-2 }}</p>
-<form method="post">{% csrf_token %}{{ email_form.as_p }}<button type="submit">Continue</button></form>
-<a href="{% url 'paid:patient_payment' order.order_code %}">Proceed to Payment</a>
+{% extends "content/base.html" %}
+{% block content %}
+<h2>EmoScreen Order</h2>
+<div class="card">
+  <p><strong>Form:</strong> {{ order.form.title }}</p>
+  <p><strong>Amount:</strong> ₹{{ order.final_amount_paise|floatformat:-2 }}</p>
+  <form method="post">
+    {% csrf_token %}
+    {{ email_form.as_p }}
+    <button class="btn" type="submit">Continue</button>
+  </form>
+  <a class="btn btn-green" href="{% url 'paid:patient_payment' order.order_code %}">Proceed to Payment</a>
+</div>
+{% endblock %}

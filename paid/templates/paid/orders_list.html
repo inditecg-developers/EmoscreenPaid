@@ -1,2 +1,16 @@
-<h1>Paid Orders</h1>
-<ul>{% for order in orders %}<li><a href="{% url 'paid:order_detail' doctor.unique_doctor_code order.order_code %}">{{ order.order_code }}</a> - {{ order.status }}</li>{% endfor %}</ul>
+{% extends "content/base.html" %}
+{% block content %}
+<h2>Paid Orders</h2>
+<div class="card">
+  <ul>
+    {% for order in orders %}
+      <li>
+        <a href="{% url 'paid:order_detail' doctor.unique_doctor_code order.order_code %}">{{ order.order_code }}</a>
+        - {{ order.status }}
+      </li>
+    {% empty %}
+      <li>No paid orders yet.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

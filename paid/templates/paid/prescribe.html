@@ -1,2 +1,9 @@
-<h1>Paid Prescription</h1>
-<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Create</button></form>
+{% extends "content/base.html" %}
+{% block content %}
+<h2>Paid Prescription</h2>
+<form method="post" class="card">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn btn-green" type="submit">Create</button>
+</form>
+{% endblock %}

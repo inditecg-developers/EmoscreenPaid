@@ -26,8 +26,8 @@ class PatientEmailForm(forms.Form):
 
 class DemographicsForm(forms.Form):
     child_name = forms.CharField(max_length=255)
-    child_dob = forms.DateField(required=True)
-    assessment_date = forms.DateField(required=True)
+    child_dob = forms.DateField(required=True, widget=forms.DateInput(attrs={"type": "date"}))
+    assessment_date = forms.DateField(required=True, widget=forms.DateInput(attrs={"type": "date"}))
     gender = forms.ChoiceField(choices=[("male", "Male"), ("female", "Female"), ("other", "Other")])
     completed_by = forms.CharField(max_length=255)
     consent_given = forms.BooleanField(required=True)
