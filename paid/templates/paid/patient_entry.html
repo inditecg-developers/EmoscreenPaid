@@ -3,7 +3,7 @@
 <h2>EmoScreen Order</h2>
 <div class="card">
   <p><strong>Form:</strong> {{ order.form.title }}</p>
-  <p><strong>Amount:</strong> ₹{{ order.final_amount_paise|floatformat:-2 }}</p>
+  <p><strong>Amount:</strong> ₹{{ final_amount_rupees|floatformat:2 }}</p>
   <form method="post">
     {% csrf_token %}
     {{ email_form.as_p }}

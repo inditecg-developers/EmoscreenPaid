@@ -13,7 +13,7 @@ from content.utils import normalize_phone, whatsapp_link
 from content.views import _gate_google_and_email
 
 from .forms import DemographicsForm, PaidPrescriptionForm, PatientEmailForm
-from .models import EsCfgQuestion, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsSubAnswer, EsSubSubmission
+from .models import EsCfgOption, EsCfgQuestion, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsSubAnswer, EsSubSubmission
 from .services.mailer import log_email
 from .services.payment import RazorpayAdapter
 from .services.scoring import compute_submission_scores
@@ -82,7 +82,7 @@ def prescribe_order(request, doctor_code):
                 f"{link}\n\n"
                 "For any further queries or support, please send a WhatsApp message to +91-8297634553."
             )
-            return render(request, "paid/prescribe_done.html", {"order": order, "form_link": link, "wa_link": whatsapp_link(order.patient_whatsapp, msg), "message": msg})
+            return render(request, "paid/prescribe_done.html", {"order": order, "form_link": link, "wa_link": whatsapp_link(order.patient_whatsapp, msg), "message": msg, "final_amount_rupees": order.final_amount_paise / 100})
     else:
         form = PaidPrescriptionForm()
 
@@ -104,7 +104,7 @@ def order_detail(request, doctor_code, order_code):
     if gate is not None:
         return gate
     order = get_object_or_404(EsPayOrder, doctor=doctor, order_code=order_code)
-    return render(request, "paid/order_detail.html", {"order": order, "doctor": doctor})
+    return render(request, "paid/order_detail.html", {"order": order, "doctor": doctor, "final_amount_rupees": order.final_amount_paise / 100})
 
 
 @require_http_methods(["GET", "POST"])
@@ -129,7 +129,7 @@ def patient_entry(request, order_code, doctor_code, form_code, final_amount_pais
     if order.status == EsPayOrder.Status.PAID:
         return redirect("paid:patient_form", order_code=order.order_code)
 
-    return render(request, "paid/patient_entry.html", {"order": order, "email_form": form, "amount_path": final_amount_paise})
+    return render(request, "paid/patient_entry.html", {"order": order, "email_form": form, "amount_path": final_amount_paise, "final_amount_rupees": order.final_amount_paise / 100})
 
 
 @require_http_methods(["GET", "POST"])
@@ -169,7 +169,7 @@ def patient_payment(request, order_code):
         tx.raw_payload_json = payload
         tx.save(update_fields=["status", "raw_payload_json", "updated_at"])
 
-    return render(request, "paid/patient_payment.html", {"order": order})
+    return render(request, "paid/patient_payment.html", {"order": order, "final_amount_rupees": order.final_amount_paise / 100})
 
 
 @require_http_methods(["GET", "POST"])
@@ -189,7 +189,12 @@ def patient_form(request, order_code):
     if submission.status == EsSubSubmission.Status.FINAL:
         return redirect("paid:patient_thank_you", order_code=order.order_code)
 
-    questions = EsCfgQuestion.objects.filter(form=order.form).order_by("global_order")
+    questions = list(EsCfgQuestion.objects.filter(form=order.form).select_related("option_set").order_by("global_order"))
+    option_set_codes = {q.option_set_id for q in questions if q.option_set_id}
+    options_by_set = {}
+    for opt in EsCfgOption.objects.filter(option_set_id__in=option_set_codes).order_by("option_order"):
+        options_by_set.setdefault(opt.option_set_id, []).append(opt)
+
     demo_form = DemographicsForm(request.POST or None, initial={
         "child_name": submission.child_name,
         "child_dob": submission.child_dob,
@@ -200,19 +205,46 @@ def patient_form(request, order_code):
     })
 
     if request.method == "POST" and demo_form.is_valid():
-        _save_draft(submission, demo_form.cleaned_data, request.POST, questions)
+        _save_draft(submission, demo_form.cleaned_data, request.POST, questions, options_by_set)
         return redirect("paid:patient_review", order_code=order.order_code)
 
-    answers = {a.question_id: a.value_json for a in EsSubAnswer.objects.filter(submission=submission)}
-    return render(request, "paid/patient_form.html", {"order": order, "questions": questions, "submission": submission, "answers": answers, "demo_form": demo_form})
+    answers = {a.question_id: str(a.value_json) for a in EsSubAnswer.objects.filter(submission=submission)}
+    question_rows = []
+    for q in questions:
+        opts = options_by_set.get(q.option_set_id, [])
+        question_rows.append({"question": q, "options": opts, "selected": answers.get(q.question_code, "")})
+
+    return render(
+        request,
+        "paid/patient_form.html",
+        {
+            "order": order,
+            "submission": submission,
+            "demo_form": demo_form,
+            "question_rows": question_rows,
+            "final_amount_rupees": order.final_amount_paise / 100,
+        },
+    )
 
 
 def patient_review(request, order_code):
     order = get_object_or_404(EsPayOrder, order_code=order_code)
     submission = get_object_or_404(EsSubSubmission, order=order)
-    questions = EsCfgQuestion.objects.filter(form=order.form).order_by("global_order")
-    answers = {a.question_id: a.value_json for a in EsSubAnswer.objects.filter(submission=submission)}
-    return render(request, "paid/patient_review.html", {"order": order, "submission": submission, "questions": questions, "answers": answers})
+    questions = list(EsCfgQuestion.objects.filter(form=order.form).select_related("option_set").order_by("global_order"))
+    option_set_codes = {q.option_set_id for q in questions if q.option_set_id}
+    option_labels = {
+        opt.option_code: opt.label
+        for opt in EsCfgOption.objects.filter(option_set_id__in=option_set_codes)
+    }
+    answers = {a.question_id: str(a.value_json) for a in EsSubAnswer.objects.filter(submission=submission)}
+    review_rows = []
+    for q in questions:
+        selected = answers.get(q.question_code, "")
+        review_rows.append({
+            "question_text": q.question_text,
+            "answer_text": option_labels.get(selected, selected),
+        })
+    return render(request, "paid/patient_review.html", {"order": order, "submission": submission, "review_rows": review_rows})
 
 
 @require_http_methods(["POST"])
@@ -236,7 +268,7 @@ def patient_thank_you(request, order_code):
     return render(request, "paid/patient_thank_you.html", {"order": order})
 
 
-def _save_draft(submission, demo_data, posted_data, questions):
+def _save_draft(submission, demo_data, posted_data, questions, options_by_set):
     submission.child_name = demo_data["child_name"]
     submission.child_dob = demo_data["child_dob"]
     submission.assessment_date = demo_data["assessment_date"]
@@ -251,7 +283,16 @@ def _save_draft(submission, demo_data, posted_data, questions):
         raw_val = posted_data.get(key)
         if raw_val is None:
             continue
-        score_val = Decimal(raw_val) if q.is_scored and raw_val not in ("", None) else None
+
+        score_val = None
+        if q.option_set_id:
+            option_lookup = {opt.option_code: opt for opt in options_by_set.get(q.option_set_id, [])}
+            selected_option = option_lookup.get(raw_val)
+            if q.is_scored and selected_option and selected_option.score_value is not None:
+                score_val = Decimal(str(selected_option.score_value))
+        elif q.is_scored and raw_val not in ("", None):
+            score_val = Decimal(str(raw_val))
+
         EsSubAnswer.objects.update_or_create(
             submission=submission,
             question=q,

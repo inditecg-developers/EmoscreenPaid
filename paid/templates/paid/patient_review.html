@@ -2,7 +2,11 @@
 {% block content %}
 <h2>Review</h2>
 <div class="card">
-  <p>Please verify your responses and submit final.</p>
+  <ul>
+    {% for row in review_rows %}
+      <li><strong>{{ row.question_text }}</strong>: {{ row.answer_text|default:"-" }}</li>
+    {% endfor %}
+  </ul>
   <form method="post" action="{% url 'paid:patient_submit_final' order.order_code %}">
     {% csrf_token %}
     <button class="btn btn-green" type="submit">Submit Final</button>
