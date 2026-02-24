@@ -44,12 +44,13 @@ def _sendgrid_send_with_attachments(to_email: str, subject: str, html: str, atta
         )
 
         for fname, payload in attachments:
-            message.attachment = Attachment(
+            attachment = Attachment(
                 FileContent(base64.b64encode(payload).decode("utf-8")),
                 FileName(fname),
                 FileType("application/pdf"),
                 Disposition("attachment"),
             )
+            message.add_attachment(attachment)
 
         sg = SendGridAPIClient(api_key)
         resp = sg.send(message)

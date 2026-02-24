@@ -2,7 +2,7 @@ import secrets
 from datetime import timedelta
 from decimal import Decimal
 
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -14,10 +14,10 @@ from content.utils import normalize_phone, whatsapp_link
 from content.views import _gate_google_and_email
 
 from .forms import DemographicsForm, PaidPrescriptionForm, PatientEmailForm
-from .models import EsCfgOption, EsCfgQuestion, EsCfgSection, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsSubAnswer, EsSubSubmission
+from .models import EsCfgOption, EsCfgQuestion, EsCfgSection, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsRepReport, EsSubAnswer, EsSubSubmission
 from .services.mailer import _sendgrid_send_with_attachments, log_email
 from .services.payment import RazorpayAdapter
-from .services.reporting import generate_and_store_reports
+from .services.reporting import build_pdf_password, generate_and_store_reports
 from .services.scoring import compute_submission_scores
 from .services.tokens import build_order_token_payload, hash_token, sign_payload, unsign_payload
 
@@ -296,9 +296,45 @@ def patient_submit_final(request, order_code):
     return redirect("paid:patient_thank_you", order_code=order.order_code)
 
 
+def download_report(request, order_code, kind):
+    order = get_object_or_404(EsPayOrder, order_code=order_code)
+    submission = get_object_or_404(EsSubSubmission, order=order)
+    report = get_object_or_404(EsRepReport, submission=submission)
+
+    if kind == "patient":
+        fpath = report.patient_pdf_path
+        filename = f"{order.order_code}_patient_report.pdf"
+    elif kind == "doctor":
+        fpath = report.doctor_pdf_path
+        filename = f"{order.order_code}_doctor_report.pdf"
+    else:
+        raise Http404("Unknown report type")
+
+    return FileResponse(open(fpath, "rb"), as_attachment=True, filename=filename)
+
+
 def patient_thank_you(request, order_code):
     order = get_object_or_404(EsPayOrder, order_code=order_code)
-    return render(request, "paid/patient_thank_you.html", {"order": order})
+    submission = EsSubSubmission.objects.filter(order=order).first()
+    report = EsRepReport.objects.filter(submission=submission).first() if submission else None
+
+    patient_password = ""
+    doctor_password = ""
+    if submission and report:
+        patient_password = build_pdf_password(submission.child_name or order.patient_name, order.patient_whatsapp)
+        doctor_password = build_pdf_password(order.doctor.email, order.doctor.whatsapp or "")
+
+    return render(
+        request,
+        "paid/patient_thank_you.html",
+        {
+            "order": order,
+            "submission": submission,
+            "report": report,
+            "patient_password": patient_password,
+            "doctor_password": doctor_password,
+        },
+    )
 
 
 def _save_draft(submission, demo_data, posted_data, questions, options_by_set):
@@ -345,6 +381,7 @@ def _is_basic_detail_question(question):
     basic_markers = (
         "dob",
         "date of birth",
+        "date",
         "child name",
         "child's name",
         "completed by",

@@ -1,4 +1,5 @@
 from django import forms
+from django.utils import timezone
 
 from .models import EsCfgForm
 
@@ -31,3 +32,10 @@ class DemographicsForm(forms.Form):
     gender = forms.ChoiceField(choices=[("male", "Male"), ("female", "Female"), ("other", "Other")])
     completed_by = forms.CharField(max_length=255)
     consent_given = forms.BooleanField(required=True)
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        today = timezone.localdate().isoformat()
+        self.fields["child_dob"].widget.attrs["max"] = today
+        self.fields["assessment_date"].widget.attrs["max"] = today

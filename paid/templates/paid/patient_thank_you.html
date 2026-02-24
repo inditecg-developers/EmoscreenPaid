@@ -3,5 +3,17 @@
 <h2>Thank you</h2>
 <div class="card">
   <p>Your response has been submitted.</p>
+
+  {% if report %}
+    <p><strong>Debug downloads:</strong></p>
+    <p>
+      <a class="btn" href="{% url 'paid:download_report' order.order_code 'patient' %}">Download Patient Report</a>
+      <a class="btn" href="{% url 'paid:download_report' order.order_code 'doctor' %}">Download Doctor Report</a>
+    </p>
+    <p><strong>Patient PDF password (debug):</strong> {{ patient_password }}</p>
+    <p><strong>Doctor PDF password (debug):</strong> {{ doctor_password }}</p>
+  {% else %}
+    <p>Report is not generated yet.</p>
+  {% endif %}
 </div>
 {% endblock %}

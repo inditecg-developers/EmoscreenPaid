@@ -27,7 +27,7 @@
           {% endfor %}
         {% else %}
           {% if row.question.question_type|lower == "date" %}
-          <input type="date" name="q_{{ row.question.question_code }}" value="{{ row.selected }}" {% if row.question.is_required %}required{% endif %}>
+          <input type="date" name="q_{{ row.question.question_code }}" value="{{ row.selected }}" max="{{ demo_form.assessment_date.field.widget.attrs.max }}" {% if row.question.is_required %}required{% endif %}>
         {% else %}
           <input type="text" name="q_{{ row.question.question_code }}" value="{{ row.selected }}" {% if row.question.is_required %}required{% endif %}>
         {% endif %}
