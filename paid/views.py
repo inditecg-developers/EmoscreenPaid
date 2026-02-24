@@ -299,6 +299,9 @@ def patient_submit_final(request, order_code):
 def download_report(request, order_code, kind):
     order = get_object_or_404(EsPayOrder, order_code=order_code)
     submission = get_object_or_404(EsSubSubmission, order=order)
+
+    # Always regenerate from latest code/config before download so stale PDFs are replaced.
+    generate_and_store_reports(submission)
     report = get_object_or_404(EsRepReport, submission=submission)
 
     if kind == "patient":
@@ -316,6 +319,12 @@ def download_report(request, order_code, kind):
 def patient_thank_you(request, order_code):
     order = get_object_or_404(EsPayOrder, order_code=order_code)
     submission = EsSubSubmission.objects.filter(order=order).first()
+
+    regenerated = False
+    if submission and request.GET.get("refresh") == "1":
+        generate_and_store_reports(submission)
+        regenerated = True
+
     report = EsRepReport.objects.filter(submission=submission).first() if submission else None
 
     patient_password = ""
@@ -333,6 +342,7 @@ def patient_thank_you(request, order_code):
             "report": report,
             "patient_password": patient_password,
             "doctor_password": doctor_password,
+            "regenerated": regenerated,
         },
     )
 

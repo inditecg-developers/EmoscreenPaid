@@ -4,6 +4,9 @@
 <div class="card">
   <p>Your response has been submitted.</p>
 
+  {% if regenerated %}<p><strong>Reports regenerated with latest template.</strong></p>{% endif %}
+  <p><a class="btn" href="?refresh=1">Regenerate Latest Reports</a></p>
+
   {% if report %}
     <p><strong>Debug downloads:</strong></p>
     <p>
