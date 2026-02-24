@@ -104,11 +104,14 @@ def _ace_items(submission):
 
 def _header_band(submission):
     age = _age_text(submission.child_dob, submission.assessment_date)
-    return [
-        ["Child Name", submission.child_name or "", "Child Age", age],
-        ["Child Gender", submission.gender or "", "Completed By", submission.completed_by or ""],
-        ["Date", str(submission.assessment_date or ""), "", ""],
-    ]
+    left = (
+        f"Child Name: {submission.child_name or ''}<br/>"
+        f"Child Age: {age}<br/>"
+        f"Child Gender: {submission.gender or ''}<br/>"
+        f"Completed By: {submission.completed_by or ''}"
+    )
+    right = f"Date: {submission.assessment_date or ''}"
+    return left, right
 
 
 def _disclaimer_html(form, report_type):
@@ -167,16 +170,36 @@ def _resolve_logo_path(logo_value: str) -> str | None:
     return None
 
 
-def _footer_rows(template: EsCfgReportTemplate | None):
+def _draw_page_footer(canvas, doc, template: EsCfgReportTemplate | None):
+    canvas.saveState()
+    page_width, _ = A4
+    left_x = doc.leftMargin
+    right_x = page_width - doc.rightMargin
+    base_y = 14 * mm
+
+    canvas.setStrokeColor(colors.HexColor("#d1d5db"))
+    canvas.setLineWidth(0.6)
+    canvas.line(left_x, base_y + 11 * mm, right_x, base_y + 11 * mm)
+
     company = (template.footer_company if template else "") or "EQUIPOISE Learning Private Limited"
     tagline = (template.footer_tagline if template else "") or (
         "The ISO 9001-2015 Certified\nEmotional Intelligence Research & Training Organisation"
     )
     phone = (template.footer_phone if template else "") or "+91 9004806077"
     email = (template.footer_email if template else "") or "equip2006@gmail.com"
-    left = f"<b>{company}</b><br/>{tagline.replace(chr(10), '<br/>')}"
-    right = f"<b>Contact us</b><br/>{phone}<br/>{email}"
-    return [[left, right]]
+
+    canvas.setFont("Helvetica-Bold", 11)
+    canvas.drawString(left_x, base_y + 7 * mm, company)
+    canvas.setFont("Helvetica", 9.5)
+    for idx, line in enumerate(str(tagline).splitlines()):
+        canvas.drawString(left_x, base_y + (3 - idx * 4) * mm, line)
+
+    canvas.setFont("Helvetica-Bold", 11)
+    canvas.drawRightString(right_x, base_y + 7 * mm, "Contact us")
+    canvas.setFont("Helvetica", 9.5)
+    canvas.drawRightString(right_x, base_y + 3 * mm, str(phone))
+    canvas.drawRightString(right_x, base_y - 1 * mm, str(email))
+    canvas.restoreState()
 
 
 def _build_pdf(report_type: str, submission) -> bytes:
@@ -187,7 +210,7 @@ def _build_pdf(report_type: str, submission) -> bytes:
     body = styles["BodyText"]
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=32 * mm)
     story = []
 
     title = "Doctor Report for EmoScreen" if report_type == "doctor" else "Patient Report for EmoScreen"
@@ -201,14 +224,31 @@ def _build_pdf(report_type: str, submission) -> bytes:
         story.append(logo)
         story.append(Spacer(1, 4))
 
-    head = Table(_header_band(submission), colWidths=[30 * mm, 60 * mm, 30 * mm, 60 * mm])
+    header_left, header_right = _header_band(submission)
+    header_text = ParagraphStyle(
+        "header_text",
+        parent=body,
+        fontName="Helvetica",
+        fontSize=10.5,
+        leading=14,
+        textColor=colors.white,
+    )
+    head = Table(
+        [[Paragraph(header_left, header_text), Paragraph(header_right, header_text)]],
+        colWidths=[125 * mm, 47 * mm],
+    )
     head.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#2f855a")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#4caf50")),
         ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10.5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
     ]))
     story.append(head)
     story.append(Spacer(1, 8))
@@ -268,19 +308,11 @@ def _build_pdf(report_type: str, submission) -> bytes:
 
     story.append(Spacer(1, 10))
     story.append(Paragraph(_normalize_paragraph_html(_disclaimer_html(submission.form, report_type)), body))
-    story.append(Spacer(1, 12))
-
-    footer_table = Table(_footer_rows(template), colWidths=[110 * mm, 62 * mm])
-    footer_table.setStyle(TableStyle([
-        ("LINEABOVE", (0, 0), (-1, 0), 0.4, colors.HexColor("#d1d5db")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(footer_table)
-
-    doc.build(story)
+    doc.build(
+        story,
+        onFirstPage=lambda canvas, doc: _draw_page_footer(canvas, doc, template),
+        onLaterPages=lambda canvas, doc: _draw_page_footer(canvas, doc, template),
+    )
     return buf.getvalue()
 
 
