@@ -13,7 +13,7 @@ from content.utils import normalize_phone, whatsapp_link
 from content.views import _gate_google_and_email
 
 from .forms import DemographicsForm, PaidPrescriptionForm, PatientEmailForm
-from .models import EsCfgOption, EsCfgQuestion, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsSubAnswer, EsSubSubmission
+from .models import EsCfgOption, EsCfgQuestion, EsCfgSection, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsSubAnswer, EsSubSubmission
 from .services.mailer import log_email
 from .services.payment import RazorpayAdapter
 from .services.scoring import compute_submission_scores
@@ -189,7 +189,20 @@ def patient_form(request, order_code):
     if submission.status == EsSubSubmission.Status.FINAL:
         return redirect("paid:patient_thank_you", order_code=order.order_code)
 
-    questions = list(EsCfgQuestion.objects.filter(form=order.form).select_related("option_set").order_by("global_order"))
+    section_order_map = {
+        s.section_code: s.display_order
+        for s in EsCfgSection.objects.filter(form=order.form)
+    }
+    all_questions = list(
+        EsCfgQuestion.objects.filter(form=order.form)
+        .select_related("option_set", "section")
+    )
+    questions = [q for q in all_questions if not _is_basic_detail_question(q)]
+    questions.sort(key=lambda q: (
+        section_order_map.get(q.section_id, 9999),
+        q.question_order if q.question_order is not None else 9999,
+        q.global_order if q.global_order is not None else 9999,
+    ))
     option_set_codes = {q.option_set_id for q in questions if q.option_set_id}
     options_by_set = {}
     for opt in EsCfgOption.objects.filter(option_set_id__in=option_set_codes).order_by("option_order"):
@@ -230,7 +243,20 @@ def patient_form(request, order_code):
 def patient_review(request, order_code):
     order = get_object_or_404(EsPayOrder, order_code=order_code)
     submission = get_object_or_404(EsSubSubmission, order=order)
-    questions = list(EsCfgQuestion.objects.filter(form=order.form).select_related("option_set").order_by("global_order"))
+    section_order_map = {
+        s.section_code: s.display_order
+        for s in EsCfgSection.objects.filter(form=order.form)
+    }
+    all_questions = list(
+        EsCfgQuestion.objects.filter(form=order.form)
+        .select_related("option_set", "section")
+    )
+    questions = [q for q in all_questions if not _is_basic_detail_question(q)]
+    questions.sort(key=lambda q: (
+        section_order_map.get(q.section_id, 9999),
+        q.question_order if q.question_order is not None else 9999,
+        q.global_order if q.global_order is not None else 9999,
+    ))
     option_set_codes = {q.option_set_id for q in questions if q.option_set_id}
     option_labels = {
         opt.option_code: opt.label
@@ -298,6 +324,28 @@ def _save_draft(submission, demo_data, posted_data, questions, options_by_set):
             question=q,
             defaults={"value_json": raw_val, "score_value": score_val},
         )
+
+
+def _is_basic_detail_question(question):
+    """Filter sheet questions that duplicate demographic header fields."""
+    tokens = " ".join([
+        (question.question_key or ""),
+        (question.legacy_field_name or ""),
+        (question.question_text or ""),
+    ]).lower()
+
+    basic_markers = (
+        "dob",
+        "date of birth",
+        "child name",
+        "child's name",
+        "completed by",
+        "gender",
+        "consent",
+        "assessment date",
+        " i hereby give consent",
+    )
+    return any(marker in tokens for marker in basic_markers)
 
 
 def _create_revenue_split(transaction):
