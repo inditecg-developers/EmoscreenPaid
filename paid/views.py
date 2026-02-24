@@ -6,6 +6,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.db import transaction
 from django.views.decorators.http import require_http_methods
 
 from content.models import RegisteredProfessional
@@ -14,8 +15,9 @@ from content.views import _gate_google_and_email
 
 from .forms import DemographicsForm, PaidPrescriptionForm, PatientEmailForm
 from .models import EsCfgOption, EsCfgQuestion, EsCfgSection, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsSubAnswer, EsSubSubmission
-from .services.mailer import log_email
+from .services.mailer import _sendgrid_send_with_attachments, log_email
 from .services.payment import RazorpayAdapter
+from .services.reporting import generate_and_store_reports
 from .services.scoring import compute_submission_scores
 from .services.tokens import build_order_token_payload, hash_token, sign_payload, unsign_payload
 
@@ -274,6 +276,7 @@ def patient_review(request, order_code):
 
 
 @require_http_methods(["POST"])
+@transaction.atomic
 def patient_submit_final(request, order_code):
     order = get_object_or_404(EsPayOrder, order_code=order_code)
     submission = get_object_or_404(EsSubSubmission, order=order)
@@ -286,6 +289,10 @@ def patient_submit_final(request, order_code):
     order.status = EsPayOrder.Status.SUBMITTED
     order.submitted_at = timezone.now()
     order.save(update_fields=["status", "submitted_at", "updated_at"])
+
+    report, patient_pdf, doctor_pdf = generate_and_store_reports(submission)
+    _send_report_emails(order, report, patient_pdf, doctor_pdf)
+
     return redirect("paid:patient_thank_you", order_code=order.order_code)
 
 
@@ -332,7 +339,8 @@ def _is_basic_detail_question(question):
         (question.question_key or ""),
         (question.legacy_field_name or ""),
         (question.question_text or ""),
-    ]).lower()
+    ]).lower().replace("’", "'")
+    collapsed = " ".join(tokens.split())
 
     basic_markers = (
         "dob",
@@ -343,9 +351,55 @@ def _is_basic_detail_question(question):
         "gender",
         "consent",
         "assessment date",
-        " i hereby give consent",
+        "i hereby give consent",
     )
-    return any(marker in tokens for marker in basic_markers)
+    if collapsed in {"date", "child name", "child's name", "completed by", "gender", "consent"}:
+        return True
+    return any(marker in collapsed for marker in basic_markers)
+
+
+def _send_report_emails(order, report, patient_pdf: bytes, doctor_pdf: bytes):
+    parent_subject = "Patient Report for EmoScreen"
+    doctor_subject = "Doctor Report for EmoScreen"
+
+    if order.patient_email:
+        ok, meta = _sendgrid_send_with_attachments(
+            order.patient_email,
+            parent_subject,
+            "<p>Attached is your EmoScreen patient report.</p>",
+            [("patient_report.pdf", patient_pdf)],
+        )
+        log_email(
+            order,
+            "PATIENT_REPORT",
+            order.patient_email,
+            parent_subject,
+            status="SENT" if ok else "FAILED",
+            error_text="" if ok else str(meta),
+        )
+        if ok:
+            report.emailed_to_parent_at = timezone.now()
+
+    doctor_email = order.doctor.email
+    if doctor_email:
+        ok, meta = _sendgrid_send_with_attachments(
+            doctor_email,
+            doctor_subject,
+            "<p>Attached are doctor and patient EmoScreen reports.</p>",
+            [("doctor_report.pdf", doctor_pdf), ("patient_report.pdf", patient_pdf)],
+        )
+        log_email(
+            order,
+            "DOCTOR_REPORT",
+            doctor_email,
+            doctor_subject,
+            status="SENT" if ok else "FAILED",
+            error_text="" if ok else str(meta),
+        )
+        if ok:
+            report.emailed_to_doctor_at = timezone.now()
+
+    report.save(update_fields=["emailed_to_parent_at", "emailed_to_doctor_at"])
 
 
 def _create_revenue_split(transaction):
