@@ -1,0 +1,63 @@
+{% extends "content/base.html" %}
+{% block content %}
+<h2>{{ order.form.title }}</h2>
+<form method="post" class="card">
+  {% csrf_token %}
+  <h3>Child Details</h3>
+  {{ demo_form.as_p }}
+
+  <div id="questions-block" style="display:none;">
+    <h3>Questions</h3>
+    {% for row in question_rows %}
+      <div class="q" style="margin-bottom:12px; padding:12px; border:1px solid var(--border); border-radius:8px;">
+        <label><strong>{{ forloop.counter }}. {{ row.question.question_text }}</strong></label>
+
+        {% if row.options %}
+          {% for opt in row.options %}
+            <label style="display:block; margin:6px 0; font-weight:400;">
+              <input
+                type="radio"
+                name="q_{{ row.question.question_code }}"
+                value="{{ opt.option_code }}"
+                {% if row.selected == opt.option_code %}checked{% endif %}
+                {% if row.question.is_required %}required{% endif %}
+              >
+              {{ opt.label }}
+            </label>
+          {% endfor %}
+        {% else %}
+          <input type="text" name="q_{{ row.question.question_code }}" value="{{ row.selected }}" {% if row.question.is_required %}required{% endif %}>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <button class="btn btn-green" type="submit">Review</button>
+</form>
+
+<script>
+(function() {
+  const consent = document.getElementById('id_consent_given');
+  const block = document.getElementById('questions-block');
+  if (!consent || !block) return;
+
+  function toggleQuestions() {
+    const show = consent.checked;
+    block.style.display = show ? 'block' : 'none';
+
+    const inputs = block.querySelectorAll('input, select, textarea');
+    inputs.forEach((el) => {
+      if (!show) {
+        el.dataset.wasRequired = el.required ? '1' : '0';
+        el.required = false;
+      } else if (el.dataset.wasRequired === '1') {
+        el.required = true;
+      }
+    });
+  }
+
+  consent.addEventListener('change', toggleQuestions);
+  toggleQuestions();
+})();
+</script>
+{% endblock %}
