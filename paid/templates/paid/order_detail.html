@@ -1,0 +1,9 @@
+{% extends "content/base.html" %}
+{% block content %}
+<h2>Order {{ order.order_code }}</h2>
+<div class="card">
+  <p><strong>Status:</strong> {{ order.status }}</p>
+  <p><strong>Patient:</strong> {{ order.patient_name }}</p>
+  <p><strong>Final Amount:</strong> ₹{{ order.final_amount_paise|floatformat:-2 }}</p>
+</div>
+{% endblock %}

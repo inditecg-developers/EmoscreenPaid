@@ -1,0 +1,13 @@
+{% extends "content/base.html" %}
+{% block content %}
+<h2>Payment</h2>
+<form method="post" class="card">
+  {% csrf_token %}
+  <p><strong>Amount:</strong> {{ order.final_amount_paise }} paise</p>
+  <label>Payment ID</label>
+  <input type="text" name="gateway_payment_id" placeholder="mock payment id" required>
+  <label>Gateway Signature</label>
+  <input type="text" name="gateway_signature" placeholder="mock signature">
+  <button class="btn btn-green" type="submit">Mark Paid</button>
+</form>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "content/base.html" %}
+{% block content %}
+<h2>Assessment Form</h2>
+<form method="post" class="card">
+  {% csrf_token %}
+  <h3>Child Details</h3>
+  {{ demo_form.as_p }}
+
+  <h3>Questions</h3>
+  {% for q in questions %}
+    <div class="q" style="margin-bottom:12px;">
+      <label><strong>{{ forloop.counter }}. {{ q.question_text }}</strong></label>
+      <input type="text" name="q_{{ q.question_code }}">
+    </div>
+  {% endfor %}
+
+  <button class="btn btn-green" type="submit">Review</button>
+</form>
+{% endblock %}
