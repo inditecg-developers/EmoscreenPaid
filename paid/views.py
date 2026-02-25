@@ -164,7 +164,26 @@ def patient_payment(request, order_code):
             _create_revenue_split(tx)
             if order.patient_email:
                 link = request.build_absolute_uri(reverse("paid:patient_form", args=[order.order_code]))
-                log_email(order, "PAYMENT_LINK", order.patient_email, "EmoScreen Assessment Link", status="SENT")
+                ok, meta = _sendgrid_send_with_attachments(
+                    order.patient_email,
+                    "EmoScreen Assessment Link",
+                    (
+                        f"<p>Dear {order.patient_name},</p>"
+                        "<p>Your doctor has prescribed EmoScreen service for you.</p>"
+                        f"<p>Please complete the assessment using this link: <a href=\"{link}\">{link}</a></p>"
+                        "<p>For support, please send a WhatsApp message to +91-8297634553.</p>"
+                    ),
+                    [],
+                )
+                log_email(
+                    order,
+                    "PAYMENT_LINK",
+                    order.patient_email,
+                    "EmoScreen Assessment Link",
+                    status="SENT" if ok else "FAILED",
+                    error_text="" if ok else str(meta),
+                    sendgrid_message_id=meta if ok else "",
+                )
             return redirect("paid:patient_form", order_code=order.order_code)
 
         tx.status = EsPayTransaction.Status.FAILED

@@ -9,7 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from paid.models import (
     EsCfgDerivedList,
@@ -202,10 +202,52 @@ def _draw_page_footer(canvas, doc, template: EsCfgReportTemplate | None):
     canvas.restoreState()
 
 
+def _draw_page_header(canvas, doc, template: EsCfgReportTemplate | None, submission, report_type: str):
+    canvas.saveState()
+    page_width, page_height = A4
+    left_x = doc.leftMargin
+    right_x = page_width - doc.rightMargin
+    top_y = page_height - doc.topMargin + 28 * mm
+
+    title = "Doctor Report for EmoScreen" if report_type == "doctor" else "Patient Report for EmoScreen"
+    canvas.setFont("Helvetica-Bold", 20)
+    canvas.drawString(left_x, top_y, title)
+
+    logo_path = _resolve_logo_path(template.header_logo_path if template else "")
+    logo_y = top_y - 11 * mm
+    if logo_path:
+        canvas.drawImage(
+            logo_path,
+            left_x,
+            logo_y,
+            width=95 * mm,
+            height=16 * mm,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+
+    header_left, header_right = _header_band(submission)
+    band_top = logo_y - 4 * mm
+    band_height = 20 * mm
+    canvas.setFillColor(colors.HexColor("#4caf50"))
+    canvas.rect(left_x, band_top - band_height, right_x - left_x, band_height, stroke=0, fill=1)
+
+    clean_left = re.sub(r"<br\s*/?>", "\n", header_left)
+    lines = [line for line in clean_left.splitlines() if line.strip()]
+    canvas.setFillColor(colors.white)
+    canvas.setFont("Helvetica", 9.2)
+    text_y = band_top - 4.5 * mm
+    for line in lines:
+        canvas.drawString(left_x + 3 * mm, text_y, line.strip())
+        text_y -= 4.2 * mm
+
+    canvas.drawRightString(right_x - 3 * mm, band_top - 4.5 * mm, re.sub(r"<[^>]*>", "", header_right))
+    canvas.restoreState()
+
+
 def _build_pdf(report_type: str, submission) -> bytes:
     template = _report_template(submission.form, report_type)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, spaceAfter=14)
     h_style = ParagraphStyle("h", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#0b2a4d"), spaceBefore=10, spaceAfter=6)
     body = ParagraphStyle("body", parent=styles["BodyText"], fontName="Helvetica", fontSize=10.5, leading=14)
     table_cell = ParagraphStyle(
@@ -224,48 +266,9 @@ def _build_pdf(report_type: str, submission) -> bytes:
     )
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=32 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=56 * mm, bottomMargin=32 * mm)
     story = []
-
-    title = "Doctor Report for EmoScreen" if report_type == "doctor" else "Patient Report for EmoScreen"
-    story.append(Paragraph(title, title_style))
-
-    logo_path = _resolve_logo_path(template.header_logo_path if template else "")
-    if logo_path:
-        logo = Image(logo_path)
-        logo.drawHeight = 18 * mm
-        logo.drawWidth = 95 * mm
-        story.append(logo)
-        story.append(Spacer(1, 4))
-
-    header_left, header_right = _header_band(submission)
-    header_text = ParagraphStyle(
-        "header_text",
-        parent=body,
-        fontName="Helvetica",
-        fontSize=10.5,
-        leading=14,
-        textColor=colors.white,
-    )
-    head = Table(
-        [[Paragraph(header_left, header_text), Paragraph(header_right, header_text)]],
-        colWidths=[125 * mm, 47 * mm],
-    )
-    head.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#4caf50")),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10.5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-    ]))
-    story.append(head)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 2))
 
     greeting = "Dear Doctor," if report_type == "doctor" else "Dear Parent,"
     story.append(Paragraph(f"<b>{greeting}</b>", body))
@@ -359,11 +362,11 @@ def _build_pdf(report_type: str, submission) -> bytes:
 
     story.append(Spacer(1, 10))
     story.append(Paragraph(_normalize_paragraph_html(_disclaimer_html(submission.form, report_type)), body))
-    doc.build(
-        story,
-        onFirstPage=lambda canvas, doc: _draw_page_footer(canvas, doc, template),
-        onLaterPages=lambda canvas, doc: _draw_page_footer(canvas, doc, template),
-    )
+    def _on_page(canvas, doc):
+        _draw_page_header(canvas, doc, template, submission, report_type)
+        _draw_page_footer(canvas, doc, template)
+
+    doc.build(story, onFirstPage=_on_page, onLaterPages=_on_page)
     return buf.getvalue()
 
 

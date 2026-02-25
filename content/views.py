@@ -155,7 +155,7 @@ def clinic_send(request, code):
     except Exception:
         paid_choices = []
 
-    behavioral_choices = [(f"B:{l.lang_code}", f"Behavioral: {l.lang_name_english}") for l in langs]
+    behavioral_choices = [("B:behavioral", "Behavioral: Behavioral and Emotional Red Flags")]
     form_choices = behavioral_choices + paid_choices
 
     if request.method == "POST":
@@ -220,7 +220,7 @@ def clinic_send(request, code):
                 )
                 return redirect(whatsapp_link(parent_phone, msg))
 
-            lang = selected_form.split(":", 1)[1] if selected_form.startswith("B:") else form.cleaned_data["language"]
+            lang = form.cleaned_data["language"]
 
             # NEW: verification link with signed token (instead of direct language page)
             token = make_verify_token(code, parent_phone, lang)

@@ -50,7 +50,7 @@ def _sendgrid_send_with_attachments(to_email: str, subject: str, html: str, atta
         )
 
         message = Mail(
-            from_email=Email(settings.DEFAULT_FROM_EMAIL, settings.REPORT_FROM_NAME),
+            from_email=Email(getattr(settings, "DEFAULT_FROM_EMAIL", ""), getattr(settings, "REPORT_FROM_NAME", "")),
             to_emails=To(to_email),
             subject=subject,
             html_content=html,
@@ -82,6 +82,17 @@ def _sendgrid_send_with_attachments(to_email: str, subject: str, html: str, atta
 
 def _smtp_send_with_attachments(to_email: str, subject: str, html: str, attachments: Iterable[tuple[str, bytes]]) -> tuple[bool, str]:
     try:
+        backend_path = getattr(settings, "EMAIL_BACKEND", "")
+        simulated_backends = (
+            "django.core.mail.backends.console.EmailBackend",
+            "django.core.mail.backends.locmem.EmailBackend",
+            "django.core.mail.backends.filebased.EmailBackend",
+            "django.core.mail.backends.dummy.EmailBackend",
+        )
+        if backend_path in simulated_backends:
+            logger.error("[Paid Email] EMAIL_BACKEND=%s does not deliver externally", backend_path)
+            return False, f"simulated-backend:{backend_path}"
+
         from_email = (
             getattr(settings, "DEFAULT_FROM_EMAIL", "")
             or getattr(settings, "SERVER_EMAIL", "")
