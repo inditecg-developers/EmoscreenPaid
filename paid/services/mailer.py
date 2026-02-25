@@ -1,9 +1,13 @@
 import base64
+import logging
 from typing import Iterable
 
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
 
 from paid.models import EsPayEmailLog
+
+logger = logging.getLogger(__name__)
 
 
 def log_email(order, email_type: str, to_email: str, subject: str, status: str = "QUEUED", error_text: str = ""):
@@ -20,8 +24,8 @@ def log_email(order, email_type: str, to_email: str, subject: str, status: str =
 def _sendgrid_send_with_attachments(to_email: str, subject: str, html: str, attachments: Iterable[tuple[str, bytes]]) -> tuple[bool, str]:
     api_key = getattr(settings, "SENDGRID_API_KEY", "")
     if not api_key:
-        print("[SendGrid] missing SENDGRID_API_KEY; skipping attachment email")
-        return False, ""
+        logger.warning("[Paid Email] SENDGRID_API_KEY missing; falling back to Django SMTP backend")
+        return _smtp_send_with_attachments(to_email, subject, html, attachments)
 
     try:
         from sendgrid import SendGridAPIClient
@@ -59,7 +63,26 @@ def _sendgrid_send_with_attachments(to_email: str, subject: str, html: str, atta
         headers = getattr(resp, "headers", {}) or {}
         if isinstance(headers, dict):
             msg_id = headers.get("X-Message-Id", "")
-        return ok, msg_id
+        if not ok:
+            logger.error("[Paid Email] SendGrid send failed status=%s body=%s", getattr(resp, "status_code", ""), getattr(resp, "body", ""))
+        return ok, msg_id or f"status:{getattr(resp, 'status_code', 'unknown')}"
     except Exception as exc:
-        print("[SendGrid] attachment email error:", exc)
+        logger.exception("[Paid Email] SendGrid attachment email error")
+        return _smtp_send_with_attachments(to_email, subject, html, attachments)
+
+
+def _smtp_send_with_attachments(to_email: str, subject: str, html: str, attachments: Iterable[tuple[str, bytes]]) -> tuple[bool, str]:
+    try:
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+        message = EmailMultiAlternatives(subject=subject, body="Please see attached report.", from_email=from_email, to=[to_email])
+        message.attach_alternative(html, "text/html")
+        for fname, payload in attachments:
+            message.attach(filename=fname, content=payload, mimetype="application/pdf")
+        sent = message.send(fail_silently=False)
+        if sent:
+            return True, "smtp:sent"
+        logger.error("[Paid Email] SMTP backend returned sent=0 for %s", to_email)
+        return False, "smtp:no_delivery"
+    except Exception as exc:
+        logger.exception("[Paid Email] SMTP attachment email error")
         return False, str(exc)

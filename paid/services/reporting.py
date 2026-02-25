@@ -206,8 +206,8 @@ def _build_pdf(report_type: str, submission) -> bytes:
     template = _report_template(submission.form, report_type)
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, spaceAfter=14)
-    h_style = ParagraphStyle("h", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#0b2a4d"), spaceBefore=8, spaceAfter=6)
-    body = styles["BodyText"]
+    h_style = ParagraphStyle("h", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#0b2a4d"), spaceBefore=10, spaceAfter=6)
+    body = ParagraphStyle("body", parent=styles["BodyText"], fontName="Helvetica", fontSize=10.5, leading=14)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=32 * mm)
@@ -251,6 +251,16 @@ def _build_pdf(report_type: str, submission) -> bytes:
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
     ]))
     story.append(head)
+    story.append(Spacer(1, 10))
+
+    greeting = "Dear Doctor," if report_type == "doctor" else "Dear Parent,"
+    story.append(Paragraph(f"<b>{greeting}</b>", body))
+    story.append(Spacer(1, 4))
+    if report_type == "doctor":
+        story.append(Paragraph("Your patient has filled the EmoScreen form.", body))
+    else:
+        story.append(Paragraph("Thank you for completing the EmoScreen form.", body))
+    story.append(Paragraph("The responses are as follows:", body))
     story.append(Spacer(1, 8))
 
     story.append(Paragraph("Responses", h_style))
@@ -261,8 +271,15 @@ def _build_pdf(report_type: str, submission) -> bytes:
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d1d5db")),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
+    for row_idx in range(1, len(response_rows)):
+        if row_idx % 2 == 0:
+            rt.setStyle(TableStyle([("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#f4f4f4"))]))
     story.append(rt)
 
     if report_type == "doctor":
