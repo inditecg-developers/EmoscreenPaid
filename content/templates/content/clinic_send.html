@@ -7,13 +7,45 @@
   {% csrf_token %}
   <label>Enter Parent's WhatsApp No.</label>
   {{ form.parent_whatsapp }}
+  <label>Select Form</label>
+  {{ form.share_form }}
   <label>Select Language</label>
-  {{ form.language }}
+  <div id="language-wrap">{{ form.language }}</div>
+  <div id="paid-wrap" style="display:none">
+    <label>Patient Name (for paid form)</label>
+    {{ form.patient_name }}
+    <label>Paid Price</label>
+    {{ form.price_variant }}
+  </div>
   <div style="margin-top:10px">
     <button class="btn btn-green" type="submit">Send via WhatsApp</button>
   </div>
   <p class="muted">We’ll open WhatsApp with a pre‑filled message in the selected language that contains the patient link.</p>
 </form>
+
+<script>
+  (function () {
+    const formSelect = document.getElementById("id_share_form");
+    const langWrap = document.getElementById("language-wrap");
+    const paidWrap = document.getElementById("paid-wrap");
+    const languageInput = document.getElementById("id_language");
+    const patientName = document.getElementById("id_patient_name");
+    const priceVariant = document.getElementById("id_price_variant");
+    function syncMode() {
+      const val = formSelect ? formSelect.value : "";
+      const isPaid = val.startsWith("P:");
+      langWrap.style.display = isPaid ? "none" : "block";
+      paidWrap.style.display = isPaid ? "block" : "none";
+      if (languageInput) languageInput.required = !isPaid;
+      if (patientName) patientName.required = isPaid;
+      if (priceVariant) priceVariant.required = isPaid;
+    }
+    if (formSelect) {
+      formSelect.addEventListener("change", syncMode);
+      syncMode();
+    }
+  })();
+</script>
 
 <div class="card" style="margin-bottom:16px">
   <h3>Bulk Share (QR & Link)</h3>
