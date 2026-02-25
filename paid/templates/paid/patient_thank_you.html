@@ -21,6 +21,7 @@
 
   <hr />
   <h3>Email delivery logs (latest)</h3>
+  <p class="muted" style="margin-top:-4px">Status guide: <strong>SENT</strong> = delivered by SMTP backend, <strong>QUEUED</strong> = accepted by provider (delivery pending), <strong>FAILED</strong> = send attempt failed.</p>
   {% if email_logs %}
     <table>
       <thead>

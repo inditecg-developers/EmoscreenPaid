@@ -180,7 +180,7 @@ def patient_payment(request, order_code):
                     "PAYMENT_LINK",
                     order.patient_email,
                     "EmoScreen Assessment Link",
-                    status="SENT" if ok else "FAILED",
+                    status=("SENT" if (ok and str(meta).startswith("smtp:")) else ("QUEUED" if ok else "FAILED")),
                     error_text="" if ok else str(meta),
                     sendgrid_message_id=meta if ok else "",
                 )
@@ -437,12 +437,13 @@ def _send_report_emails(order, report, patient_pdf: bytes, doctor_pdf: bytes):
             "<p>Attached is your EmoScreen patient report.</p>",
             [("patient_report.pdf", patient_pdf)],
         )
+        delivery_status = "SENT" if (ok and str(meta).startswith("smtp:")) else ("QUEUED" if ok else "FAILED")
         log_email(
             order,
             "PATIENT_REPORT",
             order.patient_email,
             parent_subject,
-            status="SENT" if ok else "FAILED",
+            status=delivery_status,
             error_text="" if ok else str(meta),
             sendgrid_message_id=meta if ok else "",
         )
@@ -457,12 +458,13 @@ def _send_report_emails(order, report, patient_pdf: bytes, doctor_pdf: bytes):
             "<p>Attached are doctor and patient EmoScreen reports.</p>",
             [("doctor_report.pdf", doctor_pdf), ("patient_report.pdf", patient_pdf)],
         )
+        delivery_status = "SENT" if (ok and str(meta).startswith("smtp:")) else ("QUEUED" if ok else "FAILED")
         log_email(
             order,
             "DOCTOR_REPORT",
             doctor_email,
             doctor_subject,
-            status="SENT" if ok else "FAILED",
+            status=delivery_status,
             error_text="" if ok else str(meta),
             sendgrid_message_id=meta if ok else "",
         )
