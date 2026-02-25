@@ -10,12 +10,21 @@ from paid.models import EsPayEmailLog
 logger = logging.getLogger(__name__)
 
 
-def log_email(order, email_type: str, to_email: str, subject: str, status: str = "QUEUED", error_text: str = ""):
+def log_email(
+    order,
+    email_type: str,
+    to_email: str,
+    subject: str,
+    status: str = "QUEUED",
+    error_text: str = "",
+    sendgrid_message_id: str = "",
+):
     return EsPayEmailLog.objects.create(
         order=order,
         email_type=email_type,
         to_email=to_email,
         subject=subject,
+        sendgrid_message_id=sendgrid_message_id or "",
         status=status,
         error_text=error_text,
     )
@@ -73,7 +82,11 @@ def _sendgrid_send_with_attachments(to_email: str, subject: str, html: str, atta
 
 def _smtp_send_with_attachments(to_email: str, subject: str, html: str, attachments: Iterable[tuple[str, bytes]]) -> tuple[bool, str]:
     try:
-        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+        from_email = (
+            getattr(settings, "DEFAULT_FROM_EMAIL", "")
+            or getattr(settings, "SERVER_EMAIL", "")
+            or "no-reply@emoscreen.local"
+        )
         message = EmailMultiAlternatives(subject=subject, body="Please see attached report.", from_email=from_email, to=[to_email])
         message.attach_alternative(html, "text/html")
         for fname, payload in attachments:

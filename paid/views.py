@@ -14,7 +14,7 @@ from content.utils import normalize_phone, whatsapp_link
 from content.views import _gate_google_and_email
 
 from .forms import DemographicsForm, PaidPrescriptionForm, PatientEmailForm
-from .models import EsCfgOption, EsCfgQuestion, EsCfgSection, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsRepReport, EsSubAnswer, EsSubSubmission
+from .models import EsCfgOption, EsCfgQuestion, EsCfgSection, EsPayEmailLog, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsRepReport, EsSubAnswer, EsSubSubmission
 from .services.mailer import _sendgrid_send_with_attachments, log_email
 from .services.payment import RazorpayAdapter
 from .services.reporting import build_pdf_password, generate_and_store_reports
@@ -326,6 +326,7 @@ def patient_thank_you(request, order_code):
         regenerated = True
 
     report = EsRepReport.objects.filter(submission=submission).first() if submission else None
+    email_logs = list(EsPayEmailLog.objects.filter(order=order).order_by("-created_at")[:10])
 
     patient_password = ""
     doctor_password = ""
@@ -343,6 +344,7 @@ def patient_thank_you(request, order_code):
             "patient_password": patient_password,
             "doctor_password": doctor_password,
             "regenerated": regenerated,
+            "email_logs": email_logs,
         },
     )
 
@@ -423,6 +425,7 @@ def _send_report_emails(order, report, patient_pdf: bytes, doctor_pdf: bytes):
             parent_subject,
             status="SENT" if ok else "FAILED",
             error_text="" if ok else str(meta),
+            sendgrid_message_id=meta if ok else "",
         )
         if ok:
             report.emailed_to_parent_at = timezone.now()
@@ -442,6 +445,7 @@ def _send_report_emails(order, report, patient_pdf: bytes, doctor_pdf: bytes):
             doctor_subject,
             status="SENT" if ok else "FAILED",
             error_text="" if ok else str(meta),
+            sendgrid_message_id=meta if ok else "",
         )
         if ok:
             report.emailed_to_doctor_at = timezone.now()

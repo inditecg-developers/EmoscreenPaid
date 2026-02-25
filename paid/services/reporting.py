@@ -208,6 +208,20 @@ def _build_pdf(report_type: str, submission) -> bytes:
     title_style = ParagraphStyle("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, spaceAfter=14)
     h_style = ParagraphStyle("h", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#0b2a4d"), spaceBefore=10, spaceAfter=6)
     body = ParagraphStyle("body", parent=styles["BodyText"], fontName="Helvetica", fontSize=10.5, leading=14)
+    table_cell = ParagraphStyle(
+        "table_cell",
+        parent=body,
+        fontName="Helvetica",
+        fontSize=10,
+        leading=13,
+        wordWrap="LTR",
+    )
+    table_cell_bold = ParagraphStyle(
+        "table_cell_bold",
+        parent=table_cell,
+        fontName="Helvetica-Bold",
+        textColor=colors.white,
+    )
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=32 * mm)
@@ -264,8 +278,17 @@ def _build_pdf(report_type: str, submission) -> bytes:
     story.append(Spacer(1, 8))
 
     story.append(Paragraph("Responses", h_style))
-    response_rows = [["Question", "Response"]] + [[q, a] for _, q, a in _question_rows(submission)]
-    rt = Table(response_rows, colWidths=[122 * mm, 50 * mm], repeatRows=1)
+    response_rows = [[
+        Paragraph("Question", table_cell_bold),
+        Paragraph("Response", table_cell_bold),
+    ]]
+    for _, q, a in _question_rows(submission):
+        response_rows.append([
+            Paragraph(str(q), table_cell),
+            Paragraph(str(a), table_cell),
+        ])
+
+    rt = Table(response_rows, colWidths=[118 * mm, 54 * mm], repeatRows=1)
     rt.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2f855a")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -276,6 +299,8 @@ def _build_pdf(report_type: str, submission) -> bytes:
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#bfc7cd")),
     ]))
     for row_idx in range(1, len(response_rows)):
         if row_idx % 2 == 0:
@@ -289,12 +314,16 @@ def _build_pdf(report_type: str, submission) -> bytes:
             body,
         ))
 
-        risk_rows = [["Disorder", "Score", "Risk Factor (%)"]]
+        risk_rows = [[
+            Paragraph("Disorder", table_cell_bold),
+            Paragraph("Score", table_cell_bold),
+            Paragraph("Risk Factor (%)", table_cell_bold),
+        ]]
         for s in EsSubScaleScore.objects.filter(submission=submission, included_in_doctor_table=True).select_related("scale"):
             risk_rows.append([
-                s.scale.label,
-                f"{s.score}/{s.max_score}",
-                f"{s.risk_percent:.2f}",
+                Paragraph(str(s.scale.label), table_cell),
+                Paragraph(f"{s.score}/{s.max_score}", table_cell),
+                Paragraph(f"{s.risk_percent:.2f}", table_cell),
             ])
         if len(risk_rows) > 1:
             story.append(Paragraph("The results fall into moderate to high risk for the following disorders:", body))
@@ -304,7 +333,12 @@ def _build_pdf(report_type: str, submission) -> bytes:
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d1d5db")),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]))
             story.append(risk_table)
 

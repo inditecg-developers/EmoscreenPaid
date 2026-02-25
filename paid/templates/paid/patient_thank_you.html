@@ -18,5 +18,31 @@
   {% else %}
     <p>Report is not generated yet.</p>
   {% endif %}
+
+  <hr />
+  <h3>Email delivery logs (latest)</h3>
+  {% if email_logs %}
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th><th>Type</th><th>To</th><th>Status</th><th>Message ID</th><th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in email_logs %}
+          <tr>
+            <td>{{ log.created_at }}</td>
+            <td>{{ log.email_type }}</td>
+            <td>{{ log.to_email }}</td>
+            <td>{{ log.status }}</td>
+            <td>{{ log.sendgrid_message_id|default:'-' }}</td>
+            <td style="max-width:320px;word-break:break-word">{{ log.error_text|default:'-' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No paid email logs found for this order yet.</p>
+  {% endif %}
 </div>
 {% endblock %}
