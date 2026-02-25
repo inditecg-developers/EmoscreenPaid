@@ -207,41 +207,41 @@ def _draw_page_header(canvas, doc, template: EsCfgReportTemplate | None, submiss
     page_width, page_height = A4
     left_x = doc.leftMargin
     right_x = page_width - doc.rightMargin
-    top_y = page_height - 18 * mm
+    top_y = page_height - 24 * mm
 
     title = "Doctor Report for EmoScreen" if report_type == "doctor" else "Patient Report for EmoScreen"
-    canvas.setFont("Helvetica-Bold", 18)
+    canvas.setFont("Helvetica-Bold", 17)
     canvas.drawString(left_x, top_y, title)
 
     logo_path = _resolve_logo_path(template.header_logo_path if template else "")
-    logo_y = top_y - 12 * mm
+    logo_y = top_y - 10 * mm
     if logo_path:
         canvas.drawImage(
             logo_path,
             left_x,
             logo_y,
             width=95 * mm,
-            height=14 * mm,
+            height=12 * mm,
             preserveAspectRatio=True,
             mask="auto",
         )
 
     header_left, header_right = _header_band(submission)
-    band_top = logo_y - 4 * mm
-    band_height = 18 * mm
+    band_top = logo_y - 3 * mm
+    band_height = 16 * mm
     canvas.setFillColor(colors.HexColor("#4caf50"))
     canvas.rect(left_x, band_top - band_height, right_x - left_x, band_height, stroke=0, fill=1)
 
     clean_left = re.sub(r"<br\s*/?>", "\n", header_left)
     lines = [line for line in clean_left.splitlines() if line.strip()]
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica", 8.8)
-    text_y = band_top - 4.0 * mm
+    canvas.setFont("Helvetica", 8.5)
+    text_y = band_top - 3.6 * mm
     for line in lines:
         canvas.drawString(left_x + 3 * mm, text_y, line.strip())
-        text_y -= 3.8 * mm
+        text_y -= 3.4 * mm
 
-    canvas.drawRightString(right_x - 3 * mm, band_top - 4.0 * mm, re.sub(r"<[^>]*>", "", header_right))
+    canvas.drawRightString(right_x - 3 * mm, band_top - 3.6 * mm, re.sub(r"<[^>]*>", "", header_right))
     canvas.restoreState()
 
 
@@ -266,9 +266,9 @@ def _build_pdf(report_type: str, submission) -> bytes:
     )
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=74 * mm, bottomMargin=32 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=62 * mm, bottomMargin=32 * mm)
     story = []
-    story.append(Spacer(1, 2))
+    story.append(Spacer(1, 1))
 
     greeting = "Dear Doctor," if report_type == "doctor" else "Dear Parent,"
     story.append(Paragraph(f"<b>{greeting}</b>", body))
