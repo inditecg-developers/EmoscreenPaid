@@ -127,11 +127,27 @@ class ClinicSendForm(forms.Form):
         max_length=20
     )
     language = forms.ChoiceField(choices=[], label="Select Language")
+    share_form = forms.ChoiceField(choices=[], label="Select Form")
+    patient_name = forms.CharField(label="Patient Name (for paid form)", max_length=255, required=False)
+    price_variant = forms.ChoiceField(
+        label="Paid Price",
+        required=False,
+        choices=[
+            ("INR_499", "₹499"),
+            ("INR_100", "₹100"),
+            ("INR_20", "₹20"),
+            ("INR_1", "₹1"),
+            ("INR_0", "₹0"),
+        ],
+        initial="INR_0",
+    )
 
     def __init__(self, *args, **kwargs):
         lang_choices = kwargs.pop("lang_choices", [])
+        form_choices = kwargs.pop("form_choices", [])
         super().__init__(*args, **kwargs)
         self.fields["language"].choices = lang_choices
+        self.fields["share_form"].choices = form_choices
 
     def clean_parent_whatsapp(self):
         return normalize_phone(self.cleaned_data["parent_whatsapp"])
