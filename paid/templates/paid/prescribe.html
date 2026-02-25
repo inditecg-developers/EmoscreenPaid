@@ -1,0 +1,9 @@
+{% extends "content/base.html" %}
+{% block content %}
+<h2>Paid Prescription</h2>
+<form method="post" class="card">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn btn-green" type="submit">Create</button>
+</form>
+{% endblock %}
