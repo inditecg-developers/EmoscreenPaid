@@ -144,12 +144,83 @@ def clinic_send(request, code):
 
     langs = list(Language.objects.all())
     lang_choices = [(l.lang_code, l.lang_name_english) for l in langs]
+    paid_choices = []
+    try:
+        from paid.models import EsCfgForm
+
+        paid_choices = [
+            (f"P:{f.form_code}", f"Paid: {f.title}")
+            for f in EsCfgForm.objects.filter(is_active=True).order_by("age_min_months", "title")
+        ]
+    except Exception:
+        paid_choices = []
+
+    behavioral_choices = [(f"B:{l.lang_code}", f"Behavioral: {l.lang_name_english}") for l in langs]
+    form_choices = behavioral_choices + paid_choices
 
     if request.method == "POST":
-        form = ClinicSendForm(request.POST, lang_choices=lang_choices)
+        form = ClinicSendForm(request.POST, lang_choices=lang_choices, form_choices=form_choices)
         if form.is_valid():
             parent_phone = form.cleaned_data["parent_whatsapp"]
-            lang = form.cleaned_data["language"]
+            selected_form = form.cleaned_data["share_form"]
+
+            if selected_form.startswith("P:"):
+                from paid.models import EsCfgForm, EsPayOrder
+                from paid.services.tokens import build_order_token_payload, hash_token, sign_payload
+
+                price_map = {
+                    "INR_499": 49900,
+                    "INR_100": 10000,
+                    "INR_20": 2000,
+                    "INR_1": 100,
+                    "INR_0": 0,
+                }
+                form_code = selected_form.split(":", 1)[1]
+                paid_form = get_object_or_404(EsCfgForm, form_code=form_code, is_active=True)
+                price_variant = form.cleaned_data.get("price_variant") or "INR_0"
+                final_amount = price_map.get(price_variant, 0)
+
+                order_code = generate_doctor_code().upper()
+                order = EsPayOrder.objects.create(
+                    order_code=order_code,
+                    doctor=pro,
+                    form=paid_form,
+                    price_variant=price_variant,
+                    base_amount_paise=final_amount,
+                    discount_paise=0,
+                    final_amount_paise=final_amount,
+                    patient_name=form.cleaned_data.get("patient_name") or "Patient",
+                    patient_whatsapp=normalize_phone(parent_phone),
+                    patient_email=None,
+                    status=EsPayOrder.Status.PAYMENT_SKIPPED if final_amount == 0 else EsPayOrder.Status.PAYMENT_PENDING,
+                    link_token_hash="pending",
+                    link_expires_at=timezone.now() + timedelta(days=7),
+                    created_ip=request.META.get("REMOTE_ADDR"),
+                    user_agent=request.META.get("HTTP_USER_AGENT", ""),
+                )
+                payload = build_order_token_payload(order, code)
+                token = sign_payload(payload)
+                order.link_token_hash = hash_token(token)
+                order.status = EsPayOrder.Status.LINK_SENT
+                order.save(update_fields=["link_token_hash", "status", "updated_at"])
+
+                paid_link = request.build_absolute_uri(
+                    reverse(
+                        "paid:patient_entry",
+                        args=[order.order_code, code, paid_form.form_code, order.final_amount_paise, token],
+                    )
+                )
+                msg = (
+                    "Dear Parents,\n\n"
+                    f"I’m prescribing Emo Screen tool – {paid_form.title}.\n\n"
+                    "To complete your order,\n"
+                    "CLICK HERE\n\n"
+                    f"{paid_link}\n\n"
+                    "For any further queries or support, please send a WhatsApp message to +91-8297634553."
+                )
+                return redirect(whatsapp_link(parent_phone, msg))
+
+            lang = selected_form.split(":", 1)[1] if selected_form.startswith("B:") else form.cleaned_data["language"]
 
             # NEW: verification link with signed token (instead of direct language page)
             token = make_verify_token(code, parent_phone, lang)
@@ -163,7 +234,7 @@ def clinic_send(request, code):
             wa_url = whatsapp_link(parent_phone, msg)
             return redirect(wa_url)
     else:
-        form = ClinicSendForm(lang_choices=lang_choices)
+        form = ClinicSendForm(lang_choices=lang_choices, form_choices=form_choices)
     share_url = request.build_absolute_uri(reverse("content:share_landing", args=[code]))
     ctx = {"form": form, "pro": pro, "share_url": share_url, **white_label_context(pro)}
     return render(request, "content/clinic_send.html", ctx)
