@@ -201,6 +201,7 @@ def _draw_page_footer(canvas, doc, template: EsCfgReportTemplate | None):
     canvas.setFont("Helvetica", 8.8)
     canvas.drawRightString(text_right, base_y + 4 * mm, str(phone))
     canvas.drawRightString(text_right, base_y + 0.2 * mm, str(email))
+
     canvas.restoreState()
 
 
@@ -222,6 +223,7 @@ def _draw_page_header(canvas, doc, template: EsCfgReportTemplate | None, submiss
         canvas.drawImage(
             logo_path,
             text_left,
+
             logo_y,
             width=95 * mm,
             height=12 * mm,
@@ -245,6 +247,7 @@ def _draw_page_header(canvas, doc, template: EsCfgReportTemplate | None, submiss
         text_y -= 3.4 * mm
 
     canvas.drawRightString(right_x - 8 * mm, band_top - 3.6 * mm, re.sub(r"<[^>]*>", "", header_right))
+
     canvas.restoreState()
 
 
@@ -270,6 +273,8 @@ def _build_pdf(report_type: str, submission) -> bytes:
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=54 * mm, bottomMargin=24 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=54 * mm, bottomMargin=24 * mm)
+
     story = []
     story.append(Spacer(1, 1))
 
