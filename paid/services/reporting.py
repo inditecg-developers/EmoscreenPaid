@@ -190,7 +190,6 @@ def _draw_page_footer(canvas, doc, template: EsCfgReportTemplate | None):
     phone = (template.footer_phone if template else "") or "+91 9004806077"
     email = (template.footer_email if template else "") or "equip2006@gmail.com"
 
-<<<<<<< codex/add-paid-emoscreen-age-group-forms-g4envo
     canvas.setFont("Helvetica-Bold", 10)
     canvas.drawString(text_left, base_y + 8 * mm, company)
     canvas.setFont("Helvetica", 8.8)
@@ -202,26 +201,13 @@ def _draw_page_footer(canvas, doc, template: EsCfgReportTemplate | None):
     canvas.setFont("Helvetica", 8.8)
     canvas.drawRightString(text_right, base_y + 4 * mm, str(phone))
     canvas.drawRightString(text_right, base_y + 0.2 * mm, str(email))
-=======
-    canvas.setFont("Helvetica-Bold", 11)
-    canvas.drawString(left_x, base_y + 7 * mm, company)
-    canvas.setFont("Helvetica", 9.5)
-    for idx, line in enumerate(str(tagline).splitlines()):
-        canvas.drawString(left_x, base_y + (3 - idx * 4) * mm, line)
 
-    canvas.setFont("Helvetica-Bold", 11)
-    canvas.drawRightString(right_x, base_y + 7 * mm, "Contact us")
-    canvas.setFont("Helvetica", 9.5)
-    canvas.drawRightString(right_x, base_y + 3 * mm, str(phone))
-    canvas.drawRightString(right_x, base_y - 1 * mm, str(email))
->>>>>>> main
     canvas.restoreState()
 
 
 def _draw_page_header(canvas, doc, template: EsCfgReportTemplate | None, submission, report_type: str):
     canvas.saveState()
     page_width, page_height = A4
-<<<<<<< codex/add-paid-emoscreen-age-group-forms-g4envo
     left_x = 0
     right_x = page_width
     text_left = 8 * mm
@@ -237,22 +223,7 @@ def _draw_page_header(canvas, doc, template: EsCfgReportTemplate | None, submiss
         canvas.drawImage(
             logo_path,
             text_left,
-=======
-    left_x = doc.leftMargin
-    right_x = page_width - doc.rightMargin
-    top_y = page_height - 24 * mm
 
-    title = "Doctor Report for EmoScreen" if report_type == "doctor" else "Patient Report for EmoScreen"
-    canvas.setFont("Helvetica-Bold", 17)
-    canvas.drawString(left_x, top_y, title)
-
-    logo_path = _resolve_logo_path(template.header_logo_path if template else "")
-    logo_y = top_y - 10 * mm
-    if logo_path:
-        canvas.drawImage(
-            logo_path,
-            left_x,
->>>>>>> main
             logo_y,
             width=95 * mm,
             height=12 * mm,
@@ -272,17 +243,11 @@ def _draw_page_header(canvas, doc, template: EsCfgReportTemplate | None, submiss
     canvas.setFont("Helvetica", 8.5)
     text_y = band_top - 3.6 * mm
     for line in lines:
-<<<<<<< codex/add-paid-emoscreen-age-group-forms-g4envo
         canvas.drawString(text_left + 1 * mm, text_y, line.strip())
         text_y -= 3.4 * mm
 
     canvas.drawRightString(right_x - 8 * mm, band_top - 3.6 * mm, re.sub(r"<[^>]*>", "", header_right))
-=======
-        canvas.drawString(left_x + 3 * mm, text_y, line.strip())
-        text_y -= 3.4 * mm
 
-    canvas.drawRightString(right_x - 3 * mm, band_top - 3.6 * mm, re.sub(r"<[^>]*>", "", header_right))
->>>>>>> main
     canvas.restoreState()
 
 
@@ -307,11 +272,9 @@ def _build_pdf(report_type: str, submission) -> bytes:
     )
 
     buf = io.BytesIO()
-<<<<<<< codex/add-paid-emoscreen-age-group-forms-g4envo
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=54 * mm, bottomMargin=24 * mm)
-=======
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=62 * mm, bottomMargin=32 * mm)
->>>>>>> main
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=54 * mm, bottomMargin=24 * mm)
+
     story = []
     story.append(Spacer(1, 1))
 

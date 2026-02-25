@@ -1,13 +1,15 @@
 import secrets
+import json
 from datetime import timedelta
 from decimal import Decimal
 
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.db import transaction
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 
 from content.models import RegisteredProfessional
 from content.utils import normalize_phone, whatsapp_link
@@ -16,7 +18,7 @@ from content.views import _gate_google_and_email
 from .forms import DemographicsForm, PaidPrescriptionForm, PatientEmailForm
 from .models import EsCfgOption, EsCfgQuestion, EsCfgSection, EsPayEmailLog, EsPayOrder, EsPayRevenueSplit, EsPayTransaction, EsRepReport, EsSubAnswer, EsSubSubmission
 from .services.mailer import _sendgrid_send_with_attachments, log_email
-from .services.payment import RazorpayAdapter
+from .services.payment import RazorpayAdapter, RazorpayError
 from .services.reporting import build_pdf_password, generate_and_store_reports
 from .services.scoring import compute_submission_scores
 from .services.tokens import build_order_token_payload, hash_token, sign_payload, unsign_payload
@@ -137,25 +139,70 @@ def patient_entry(request, order_code, doctor_code, form_code, final_amount_pais
 @require_http_methods(["GET", "POST"])
 def patient_payment(request, order_code):
     order = get_object_or_404(EsPayOrder, order_code=order_code)
-    adapter = RazorpayAdapter()
+    try:
+        adapter = RazorpayAdapter()
+    except RazorpayError as exc:
+        return render(
+            request,
+            "paid/patient_payment.html",
+            {
+                "order": order,
+                "final_amount_rupees": order.final_amount_paise / 100,
+                "payment_error": str(exc),
+            },
+        )
 
-    if request.method == "POST":
-        gateway_order = adapter.create_order(order.order_code, order.final_amount_paise)
+    if order.final_amount_paise <= 0:
+        return redirect("paid:patient_form", order_code=order.order_code)
+
+    tx = (
+        EsPayTransaction.objects
+        .filter(order=order)
+        .exclude(status=EsPayTransaction.Status.FAILED)
+        .order_by("-created_at")
+        .first()
+    )
+    if not tx or not tx.gateway_order_id:
+        gateway_order = adapter.create_order(
+            receipt=order.order_code,
+            amount_paise=order.final_amount_paise,
+            notes={"order_code": order.order_code, "doctor_id": str(order.doctor_id)},
+        )
         tx = EsPayTransaction.objects.create(
             order=order,
             gateway="razorpay",
             gateway_order_id=gateway_order.gateway_order_id,
             status=EsPayTransaction.Status.CREATED,
             amount_paise=order.final_amount_paise,
+            currency=gateway_order.currency,
         )
+
+    if request.method == "POST":
         payload = {
-            "gateway_payment_id": request.POST.get("gateway_payment_id"),
-            "gateway_signature": request.POST.get("gateway_signature"),
+            "razorpay_payment_id": request.POST.get("razorpay_payment_id"),
+            "razorpay_order_id": request.POST.get("razorpay_order_id"),
+            "razorpay_signature": request.POST.get("razorpay_signature"),
         }
+        if payload["razorpay_order_id"] != tx.gateway_order_id:
+            tx.status = EsPayTransaction.Status.FAILED
+            tx.raw_payload_json = payload
+            tx.save(update_fields=["status", "raw_payload_json", "updated_at"])
+            return render(
+                request,
+                "paid/patient_payment.html",
+                {
+                    "order": order,
+                    "final_amount_rupees": order.final_amount_paise / 100,
+                    "payment_error": "Razorpay order mismatch. Please retry payment.",
+                    "razorpay_key_id": adapter.public_key_id,
+                    "gateway_order_id": tx.gateway_order_id,
+                },
+            )
+
         if adapter.verify_signature(payload):
             tx.status = EsPayTransaction.Status.SUCCESS
-            tx.gateway_payment_id = payload["gateway_payment_id"]
-            tx.gateway_signature = payload["gateway_signature"] or ""
+            tx.gateway_payment_id = payload["razorpay_payment_id"]
+            tx.gateway_signature = payload["razorpay_signature"] or ""
             tx.raw_payload_json = payload
             tx.save(update_fields=["status", "gateway_payment_id", "gateway_signature", "raw_payload_json", "updated_at"])
             order.status = EsPayOrder.Status.PAID
@@ -190,7 +237,61 @@ def patient_payment(request, order_code):
         tx.raw_payload_json = payload
         tx.save(update_fields=["status", "raw_payload_json", "updated_at"])
 
-    return render(request, "paid/patient_payment.html", {"order": order, "final_amount_rupees": order.final_amount_paise / 100})
+    return render(
+        request,
+        "paid/patient_payment.html",
+        {
+            "order": order,
+            "final_amount_rupees": order.final_amount_paise / 100,
+            "razorpay_key_id": adapter.public_key_id,
+            "gateway_order_id": tx.gateway_order_id,
+        },
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def razorpay_webhook(request):
+    try:
+        adapter = RazorpayAdapter()
+    except RazorpayError as exc:
+        return HttpResponseBadRequest(str(exc))
+
+    signature = request.headers.get("X-Razorpay-Signature", "")
+    if not adapter.verify_webhook_signature(request.body, signature):
+        return HttpResponseBadRequest("Invalid webhook signature")
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest("Invalid JSON")
+
+    event = payload.get("event", "")
+    entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+    gateway_order_id = entity.get("order_id", "")
+    payment_id = entity.get("id", "")
+
+    tx = EsPayTransaction.objects.filter(gateway_order_id=gateway_order_id).order_by("-created_at").first()
+    if not tx:
+        return JsonResponse({"ok": True, "ignored": "transaction_not_found"})
+
+    tx.gateway_payment_id = payment_id or tx.gateway_payment_id
+    tx.raw_payload_json = payload
+    if event in {"payment.captured", "order.paid"}:
+        tx.status = EsPayTransaction.Status.SUCCESS
+    elif event in {"payment.failed"}:
+        tx.status = EsPayTransaction.Status.FAILED
+    tx.save(update_fields=["gateway_payment_id", "raw_payload_json", "status", "updated_at"])
+
+    if tx.status == EsPayTransaction.Status.SUCCESS:
+        order = tx.order
+        if order.status != EsPayOrder.Status.PAID:
+            order.status = EsPayOrder.Status.PAID
+            order.paid_at = timezone.now()
+            order.save(update_fields=["status", "paid_at", "updated_at"])
+        _create_revenue_split(tx)
+
+    return JsonResponse({"ok": True})
 
 
 @require_http_methods(["GET", "POST"])
@@ -475,6 +576,8 @@ def _send_report_emails(order, report, patient_pdf: bytes, doctor_pdf: bytes):
 
 
 def _create_revenue_split(transaction):
+    if EsPayRevenueSplit.objects.filter(transaction=transaction).exists():
+        return
     half = int(transaction.amount_paise / 2)
     EsPayRevenueSplit.objects.create(
         transaction=transaction,
