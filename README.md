@@ -1,12 +1,5 @@
 # EmoScreen README
 
-## Scope
-
-This document is derived **only** from the provided repository export (`EmoscreenCode.txt`) and database export (`emoscreenlocal.sql`). The code and schema together show a Django/MySQL system with two primary product surfaces: a **legacy Behavioral and Emotional Red Flags screening flow** implemented in the `content` app, and a **newer paid, configurable EmoScreen assessment flow** implemented in the `paid` app. The project root mounts both apps at the same site root and also enables Google OAuth via `social_django`.
-
-A schema-level caveat is visible in the SQL dump: `es_pay_orders` optionally references `school_campaigns`, and the migration history includes a `schools` app, but the provided code export only exposes `content`, `paid`, and `social_django` as installed application modules. This README therefore treats school campaigns as a **database integration point** rather than a fully documented code module.
-
----
 
 ## 1. Product Overview
 
